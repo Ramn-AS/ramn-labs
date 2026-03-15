@@ -576,10 +576,22 @@ public sealed class CompressionWorker : BackgroundService
                 job.Error = new BackgroundJobErrorDetails
                 {
                     ErrorCode = "job_failed_unhandled",
-                    Message = "Compression failed due to an unexpected backend error."
+                    Message = BuildUnhandledErrorMessage("Compression failed due to an unexpected backend error", ex)
                 };
             }
         }
+    }
+
+    private static string BuildUnhandledErrorMessage(string prefix, Exception ex)
+    {
+        if (ex is null)
+        {
+            return prefix + ".";
+        }
+
+        var exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
+        var exceptionMessage = string.IsNullOrWhiteSpace(ex.Message) ? "No exception message provided." : ex.Message;
+        return $"{exceptionMessage}";
     }
 
     private async Task ProcessJobAsync(Guid jobId, CancellationToken stoppingToken)

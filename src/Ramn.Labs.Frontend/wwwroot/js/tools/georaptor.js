@@ -35,6 +35,7 @@ document.addEventListener("alpine:init", () => {
         geometryCount: 0,
         isSubmitting: false,
         completedToastShownForJobId: null,
+        errorToastKey: null,
         pollController: null,
         map: null,
         mapThemeController: null,
@@ -204,6 +205,7 @@ document.addEventListener("alpine:init", () => {
             this.error = null;
             this.message = "Submitting job...";
             this.completedToastShownForJobId = null;
+            this.errorToastKey = null;
             this.stopPolling();
             this.clearMap();
 
@@ -249,7 +251,9 @@ document.addEventListener("alpine:init", () => {
                 }
 
                 this.error = err.message || "Unable to submit job.";
+                this.status = this.error;
                 this.message = "Submission failed.";
+                this.notifyErrorToast(this.error);
             }
             finally {
                 this.isSubmitting = false;
@@ -307,6 +311,8 @@ document.addEventListener("alpine:init", () => {
 
                 if (payload.error) {
                     this.error = payload.error.message;
+                    this.status = payload.error.message;
+                    this.notifyErrorToast(payload.error.message);
                 }
 
                 if (statusCode === statusCodes.completed) {
@@ -323,6 +329,8 @@ document.addEventListener("alpine:init", () => {
                     this.stopPolling();
                     if (payload.error && payload.error.message) {
                         this.error = payload.error.message;
+                        this.status = payload.error.message;
+                        this.notifyErrorToast(payload.error.message);
                     }
                 }
             }
@@ -334,6 +342,8 @@ document.addEventListener("alpine:init", () => {
                 }
 
                 this.error = err.message || "Failed to fetch job status.";
+                this.status = this.error;
+                this.notifyErrorToast(this.error);
                 this.stopPolling();
             }
         },
@@ -353,6 +363,20 @@ document.addEventListener("alpine:init", () => {
 
             this.completedToastShownForJobId = this.jobId;
             tools.notifySuccess("Compression complete", "Your compression job finished successfully.");
+        },
+
+        notifyErrorToast(message) {
+            if (!message) {
+                return;
+            }
+
+            const key = `${this.jobId || "no-job"}:${message}`;
+            if (this.errorToastKey === key) {
+                return;
+            }
+
+            this.errorToastKey = key;
+            tools.notifyError("Compression failed", message, 7000);
         },
 
         renderGeometries(geometries) {
@@ -425,6 +449,7 @@ document.addEventListener("alpine:init", () => {
             this.previewGeometryCount = 0;
             this.canRenderGeometry = false;
             this.completedToastShownForJobId = null;
+            this.errorToastKey = null;
             this.clearMap();
         },
 

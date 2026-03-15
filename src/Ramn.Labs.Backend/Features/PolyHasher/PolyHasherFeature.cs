@@ -427,7 +427,9 @@ public sealed class PolyHasherService : IPolyHasherService
         }
         catch (Exception ex)
         {
-            throw new PolyHasherValidationException("invalid_wkt", $"Input WKT is invalid. {ex.Message}");
+            var exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
+            var exceptionMessage = string.IsNullOrWhiteSpace(ex.Message) ? "No exception message provided." : ex.Message;
+            throw new PolyHasherValidationException("invalid_wkt", $"Input WKT is invalid. {exceptionType}: {exceptionMessage}");
         }
 
         return _polyhasher.Encode(geometry, precision, mode, edgeHandling);
@@ -598,10 +600,22 @@ public sealed class PolyHasherWorker : BackgroundService
                 job.Error = new BackgroundJobErrorDetails
                 {
                     ErrorCode = "job_failed_unhandled",
-                    Message = "PolyHasher failed due to an unexpected backend error."
+                    Message = BuildUnhandledErrorMessage("PolyHasher failed due to an unexpected backend error", ex)
                 };
             }
         }
+    }
+
+    private static string BuildUnhandledErrorMessage(string prefix, Exception ex)
+    {
+        if (ex is null)
+        {
+            return prefix + ".";
+        }
+
+        var exceptionType = ex.GetType().FullName ?? ex.GetType().Name;
+        var exceptionMessage = string.IsNullOrWhiteSpace(ex.Message) ? "No exception message provided." : ex.Message;
+        return $"{exceptionMessage}";
     }
 
     private async Task ProcessJobAsync(Guid jobId, CancellationToken stoppingToken)

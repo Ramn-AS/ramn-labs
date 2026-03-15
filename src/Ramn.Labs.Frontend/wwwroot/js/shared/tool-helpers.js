@@ -137,6 +137,12 @@
         }
     }
 
+    function notifyError(title, message, delay) {
+        if (window.appNotifications && typeof window.appNotifications.error === "function") {
+            window.appNotifications.error(title, message, delay);
+        }
+    }
+
     function debounce(callback, waitMilliseconds) {
         if (typeof callback !== "function") {
             return () => { };
@@ -512,6 +518,7 @@
         isConnectivityError,
         notifyBackendConnectionError,
         notifySuccess,
+        notifyError,
         debounce,
         createPollingController,
         createLeafletThemeController,

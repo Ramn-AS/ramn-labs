@@ -59,6 +59,14 @@ document.addEventListener("alpine:init", () => {
         return closedRing.map((point) => `${point.lng} ${point.lat}`).join(", ");
     }
 
+    function latLngLineToWkt(points) {
+        if (!Array.isArray(points) || points.length < 2) {
+            return null;
+        }
+
+        return points.map((point) => `${point.lng} ${point.lat}`).join(", ");
+    }
+
     function layerToPolygonWkt(layer) {
         if (!layer || typeof layer.getLatLngs !== "function") {
             return null;
@@ -84,6 +92,36 @@ document.addEventListener("alpine:init", () => {
         return `POLYGON (${ringText.join(", ")})`;
     }
 
+    function layerToLineStringWkt(layer) {
+        if (!layer || typeof layer.getLatLngs !== "function") {
+            return null;
+        }
+
+        const latLngs = layer.getLatLngs();
+        if (!Array.isArray(latLngs) || latLngs.length < 2 || Array.isArray(latLngs[0])) {
+            return null;
+        }
+
+        const lineText = latLngLineToWkt(latLngs);
+        return lineText ? `LINESTRING (${lineText})` : null;
+    }
+
+    function layerToWkt(layer) {
+        if (!layer) {
+            return null;
+        }
+
+        if (typeof L !== "undefined" && L.Polygon && layer instanceof L.Polygon) {
+            return layerToPolygonWkt(layer);
+        }
+
+        if (typeof L !== "undefined" && L.Polyline && layer instanceof L.Polyline) {
+            return layerToLineStringWkt(layer);
+        }
+
+        return null;
+    }
+
     Alpine.data("polyhasherTool", () => ({
         wktInput: "",
         precision: 5,
@@ -106,6 +144,7 @@ document.addEventListener("alpine:init", () => {
         downloadSizeBytes: null,
         isSubmitting: false,
         completedToastShownForJobId: null,
+        errorToastKey: null,
         pollController: null,
         map: null,
         mapThemeController: null,
@@ -247,7 +286,13 @@ document.addEventListener("alpine:init", () => {
                             fillOpacity: 0.15
                         }
                     },
-                    polyline: false,
+                    polyline: {
+                        shapeOptions: {
+                            color: "#0d9488",
+                            weight: 3,
+                            opacity: 0.9
+                        }
+                    },
                     marker: false,
                     circle: false,
                     circlemarker: false
@@ -279,7 +324,7 @@ document.addEventListener("alpine:init", () => {
             let derivedWkt = null;
             this.drawLayer.eachLayer((layer) => {
                 if (!derivedWkt) {
-                    derivedWkt = layerToPolygonWkt(layer);
+                    derivedWkt = layerToWkt(layer);
                 }
             });
 
@@ -448,6 +493,7 @@ document.addEventListener("alpine:init", () => {
             this.error = null;
             this.message = "Submitting job...";
             this.completedToastShownForJobId = null;
+            this.errorToastKey = null;
             this.stopPolling();
             this.geohashes = [];
             this.previewTruncated = false;
@@ -490,7 +536,9 @@ document.addEventListener("alpine:init", () => {
                 }
 
                 this.error = err.message || "Unable to submit job.";
+                this.status = this.error;
                 this.message = "Submission failed.";
+                this.notifyErrorToast(this.error);
             }
             finally {
                 this.isSubmitting = false;
@@ -552,6 +600,8 @@ document.addEventListener("alpine:init", () => {
 
                 if (payload.error) {
                     this.error = payload.error.message;
+                    this.status = payload.error.message;
+                    this.notifyErrorToast(payload.error.message);
                 }
 
                 if (statusCode === statusCodes.completed) {
@@ -563,6 +613,8 @@ document.addEventListener("alpine:init", () => {
                     this.stopPolling();
                     if (payload.error && payload.error.message) {
                         this.error = payload.error.message;
+                        this.status = payload.error.message;
+                        this.notifyErrorToast(payload.error.message);
                     }
                 }
             }
@@ -574,6 +626,8 @@ document.addEventListener("alpine:init", () => {
                 }
 
                 this.error = err.message || "Failed to fetch job status.";
+                this.status = this.error;
+                this.notifyErrorToast(this.error);
                 this.stopPolling();
             }
         },
@@ -595,6 +649,20 @@ document.addEventListener("alpine:init", () => {
             tools.notifySuccess("Polyhash complete", "Your polyhash job finished successfully.");
         },
 
+        notifyErrorToast(message) {
+            if (!message) {
+                return;
+            }
+
+            const key = `${this.jobId || "no-job"}:${message}`;
+            if (this.errorToastKey === key) {
+                return;
+            }
+
+            this.errorToastKey = key;
+            tools.notifyError("Polyhash failed", message, 7000);
+        },
+
         clearAll() {
             this.stopPolling();
             this.wktInput = "";
@@ -612,6 +680,7 @@ document.addEventListener("alpine:init", () => {
             this.backendDurationMilliseconds = null;
             this.downloadSizeBytes = null;
             this.completedToastShownForJobId = null;
+            this.errorToastKey = null;
             this.renderGeohashPreview(false);
             this.updateInputGeometryPreview(false);
 
