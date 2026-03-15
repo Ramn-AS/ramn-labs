@@ -1,0 +1,96 @@
+@page
+@model Ramn.Labs.Frontend.Pages.Tools.PolyHasherModel
+@{
+    ViewData["Title"] = "PolyHasher Tool";
+}
+
+@section Styles {
+    <partial name="_LeafletMapStylesPartial" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <link rel="stylesheet" href="~/css/tools/polyhasher.css" asp-append-version="true" />
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="h3 m-0">PolyHasher Tool</h1>
+    <div id="queue-live-status"
+         class="status-chip"
+         hx-get="/api/polyhasher-jobs/queue-status/fragment"
+         hx-trigger="load, every 2s"
+         hx-swap="innerHTML">Loading queue status...</div>
+</div>
+
+<div x-data="polyhasherTool()" class="polyhasher-grid">
+    <section class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5">Input</h2>
+            <p class="text-body-secondary small">Paste POLYGON or MULTIPOLYGON WKT, or draw a polygon directly on the map.</p>
+
+            <div class="mb-3">
+                <label class="form-label" for="wktInput">Geometry WKT</label>
+                <textarea id="wktInput"
+                          class="form-control font-monospace"
+                          rows="10"
+                          x-model="wktInput"
+                          x-on:input.debounce.400ms="updateInputGeometryPreview(false)"
+                          placeholder="MULTIPOLYGON (((40 40, 20 45, 45 30, 40 40)), ((20 35, 45 20, 30 5, 10 10, 10 30, 20 35), (30 20, 20 25, 20 15, 30 20)))"></textarea>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label" for="precision">Precision</label>
+                    <input id="precision" type="number" class="form-control" min="1" max="12" x-model.number="precision" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label" for="mode">Mode</label>
+                    <select id="mode" class="form-select" x-model="mode">
+                        <option value="intersects">Intersects</option>
+                        <option value="contains">Contains</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-check mb-3">
+                <input id="enableCompression" class="form-check-input" type="checkbox" x-model="enableCompression" />
+                <label class="form-check-label" for="enableCompression">Enable compression</label>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary" x-on:click="submitJob()" x-bind:disabled="isSubmitting || isSubmissionLocked()">Encode</button>
+                <button type="button" class="btn btn-outline-secondary" x-on:click="clearAll()">Clear</button>
+                <a class="btn"
+                   x-bind:href="canDownload ? downloadUrl : null"
+                   x-bind:class="{ 'btn-success': canDownload, 'btn-outline-secondary disabled': !canDownload }"
+                   x-bind:aria-disabled="!canDownload">Download</a>
+            </div>
+
+            <hr />
+
+            <div class="small status-block">
+                <div><strong>Status:</strong> <span x-text="status ?? 'Idle'"></span></div>
+                <div><strong>Message:</strong> <span x-text="message"></span></div>
+                <div x-show="estimatedWaitSeconds !== null"><strong>Estimated wait:</strong> <span x-text="estimatedWaitSeconds"></span> sec</div>
+                <div x-show="geohashCount !== null"><strong>Geohash count:</strong> <span x-text="geohashCount"></span></div>
+                <div x-show="backendDurationMilliseconds !== null"><strong>Backend duration:</strong> <span x-text="formatDuration(backendDurationMilliseconds)"></span></div>
+                <div x-show="downloadSizeBytes !== null"><strong>Download size:</strong> <span x-text="formatBytes(downloadSizeBytes)"></span></div>
+                <div x-show="previewTruncated"><strong>Preview:</strong> Showing first <span x-text="geohashes.length"></span> values on map.</div>
+                <div class="text-danger mt-2" x-show="error" x-text="error"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm overflow-hidden">
+        <div class="map-container" x-ref="map"></div>
+    </section>
+</div>
+<section class="card shadow-sm mt-3">
+    <div class="card-body">
+        <em>This tool uses <a href="https://github.com/andrerav/Geohash.Polyhasher">Geohash.Polyhasher</a> for computing geohashes from a polygon. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.Polyhasher/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.Polyhasher">Github</a>.</em>
+    </div>
+</section>
+
+
+@section Scripts {
+    <partial name="_LeafletMapScriptsPartial" />
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="~/js/tools/polyhasher.js" asp-append-version="true"></script>
+}

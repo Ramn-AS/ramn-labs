@@ -1,0 +1,62 @@
+.tool-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 992px) {
+    .tool-grid {
+        grid-template-columns: 420px 1fr;
+    }
+}
+
+.map-container {
+    height: clamp(320px, 60vh, 640px);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    position: relative;
+    background: #e6ebef;
+}
+
+.map-card {
+    display: flex;
+}
+
+.map-card .map-container {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: clamp(320px, 60vh, 640px);
+}
+
+/* Prevent global image rules from shrinking Leaflet tiles. */
+.map-container .leaflet-container,
+.map-container .leaflet-pane,
+.map-container .leaflet-tile-pane,
+.map-container .leaflet-layer,
+.map-container .leaflet-tile {
+    width: 100%;
+    height: 100%;
+}
+
+.map-container .leaflet-tile {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+/* Force raster tile visibility if external CSS or extensions alter rendering. */
+.map-container .leaflet-layer,
+.map-container .leaflet-tile {
+    opacity: 1 !important;
+    visibility: visible !important;
+    filter: none !important;
+    mix-blend-mode: normal !important;
+}
+
+.status-chip {
+    font-size: 0.85rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}

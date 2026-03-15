@@ -1,0 +1,33 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home";
+}
+
+<section class="py-4">
+    <h1 class="display-6">Map tools and geohash utilities.</h1>
+    <p></p>
+    <p></p>
+    <div class="tool-tile-grid">
+        <a class="tool-tile-card" asp-page="/Tools/PolyHasher" aria-label="Open PolyHasher tool">
+            <div class="tool-tile-image-wrap">
+                <img class="tool-tile-image" src="~/images/tools/polyhasher-preview.jpg" alt="PolyHasher preview" onerror="this.style.display='none'; this.parentElement.classList.add('is-empty');" />
+                <span class="tool-tile-image-placeholder">Add image: wwwroot/images/tools/polyhasher-preview.jpg</span>
+            </div>
+            <div class="tool-tile-body">
+                <h2 class="h4 mb-2">PolyHasher</h2>
+                <p class="mb-0 text-body-secondary">Draw or paste polygon geometry, encode it into geohashes with selectable precision and mode, and download the generated set.</p>
+            </div>
+        </a>
+        <a class="tool-tile-card" asp-page="/Tools/GeoRaptor" aria-label="Open GeoRaptor compression tool">
+            <div class="tool-tile-image-wrap">
+                <img class="tool-tile-image" src="~/images/tools/georaptor-preview.jpg" alt="GeoRaptor preview" onerror="this.style.display='none'; this.parentElement.classList.add('is-empty');" />
+                <span class="tool-tile-image-placeholder">Add image: wwwroot/images/tools/georaptor-preview.jpg</span>
+            </div>
+            <div class="tool-tile-body">
+                <h2 class="h4 mb-2">GeoRaptor Compression</h2>
+                <p class="mb-0 text-body-secondary">Compress large geohash sets into fewer cells while preserving coverage, then inspect and download the compressed output.</p>
+            </div>
+        </a>
+    </div>
+</section>

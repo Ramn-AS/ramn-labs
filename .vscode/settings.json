@@ -1,0 +1,11 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "dotnet new": true,
+        "dotnet sln": true,
+        "dotnet add": true,
+        "Rename-Item": true,
+        "dotnet package": true,
+        "dotnet test": true,
+        "dotnet run": true
+    }
+}

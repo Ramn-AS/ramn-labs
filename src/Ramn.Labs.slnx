@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Ramn.Labs.Backend/Ramn.Labs.Backend.csproj" />
+  <Project Path="Ramn.Labs.Frontend/Ramn.Labs.Frontend.csproj" />
+</Solution>

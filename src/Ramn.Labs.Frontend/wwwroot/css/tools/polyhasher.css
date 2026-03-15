@@ -1,0 +1,45 @@
+.polyhasher-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 992px) {
+    .polyhasher-grid {
+        grid-template-columns: minmax(400px, 480px) 1fr;
+    }
+}
+
+.status-block {
+    line-height: 1.5;
+}
+
+.map-container {
+    height: clamp(360px, 64vh, 720px);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    position: relative;
+    background: #e6ebef;
+}
+
+/* Prevent global image rules from shrinking Leaflet tiles. */
+.map-container .leaflet-tile {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+/* Keep tile images unaffected by global img styling rules. */
+.map-container .leaflet-tile-pane img,
+.map-container .leaflet-marker-pane img {
+    max-width: none !important;
+    max-height: none !important;
+}
+
+.status-chip {
+    font-size: 0.85rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}
