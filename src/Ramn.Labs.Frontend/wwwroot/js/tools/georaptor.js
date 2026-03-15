@@ -5,11 +5,18 @@ document.addEventListener("alpine:init", () => {
         return;
     }
 
+    const preferencesKeys = {
+        minPrecision: "ramnlabs.georaptor.minPrecision",
+        maxPrecision: "ramnlabs.georaptor.maxPrecision",
+        zipBeforeDownload: "ramnlabs.georaptor.zipBeforeDownload"
+    };
+
     const statusCodes = tools.statusCodes;
 
     Alpine.data("georaptorTool", () => ({
         minPrecision: 3,
         maxPrecision: 6,
+        zipBeforeDownload: true,
         inputText: "",
         jobId: null,
         status: null,
@@ -22,6 +29,8 @@ document.addEventListener("alpine:init", () => {
         estimatedWaitSeconds: null,
         backendDurationMilliseconds: null,
         downloadSizeBytes: null,
+        previewTruncated: false,
+        previewGeometryCount: 0,
         canRenderGeometry: false,
         geometryCount: 0,
         isSubmitting: false,
@@ -40,6 +49,8 @@ document.addEventListener("alpine:init", () => {
                 getDelaySeconds: () => this.pollAfterSeconds,
                 poll: () => this.pollStatus()
             });
+
+            this.loadPreferences();
 
             this.mapMaximized = preferencesStore && typeof preferencesStore.getMapMaximizedPreference === "function"
                 ? preferencesStore.getMapMaximizedPreference()
@@ -62,6 +73,28 @@ document.addEventListener("alpine:init", () => {
                 this.initializeMap();
                 this.ensureMapSize();
             });
+        },
+
+        loadPreferences() {
+            if (!preferencesStore || typeof preferencesStore.getPreference !== "function") {
+                return;
+            }
+
+            const minPrecision = Number(preferencesStore.getPreference(preferencesKeys.minPrecision, this.minPrecision));
+            const maxPrecision = Number(preferencesStore.getPreference(preferencesKeys.maxPrecision, this.maxPrecision));
+            this.minPrecision = Number.isFinite(minPrecision) ? Math.min(12, Math.max(1, Math.floor(minPrecision))) : this.minPrecision;
+            this.maxPrecision = Number.isFinite(maxPrecision) ? Math.min(12, Math.max(this.minPrecision, Math.floor(maxPrecision))) : this.maxPrecision;
+            this.zipBeforeDownload = preferencesStore.getPreference(preferencesKeys.zipBeforeDownload, true) !== false;
+        },
+
+        persistPreferences() {
+            if (!preferencesStore || typeof preferencesStore.setPreference !== "function") {
+                return;
+            }
+
+            preferencesStore.setPreference(preferencesKeys.minPrecision, this.minPrecision);
+            preferencesStore.setPreference(preferencesKeys.maxPrecision, this.maxPrecision);
+            preferencesStore.setPreference(preferencesKeys.zipBeforeDownload, this.zipBeforeDownload);
         },
 
         initializeMap() {
@@ -186,6 +219,7 @@ document.addEventListener("alpine:init", () => {
                 const formData = new FormData();
                 formData.append("minPrecision", String(this.minPrecision));
                 formData.append("maxPrecision", String(this.maxPrecision));
+                formData.append("zipBeforeDownload", this.zipBeforeDownload ? "true" : "false");
                 if (hasText) {
                     formData.append("inputText", this.inputText);
                 }
@@ -266,6 +300,8 @@ document.addEventListener("alpine:init", () => {
                 this.compressedCount = payload.compressedCount;
                 this.backendDurationMilliseconds = payload.backendDurationMilliseconds ?? null;
                 this.downloadSizeBytes = payload.downloadSizeBytes ?? null;
+                this.previewTruncated = payload.previewTruncated === true;
+                this.previewGeometryCount = Array.isArray(payload.geometries) ? payload.geometries.length : 0;
                 this.canDownload = payload.canDownload;
                 this.canRenderGeometry = payload.canRenderGeometry;
 
@@ -385,6 +421,8 @@ document.addEventListener("alpine:init", () => {
             this.estimatedWaitSeconds = null;
             this.backendDurationMilliseconds = null;
             this.downloadSizeBytes = null;
+            this.previewTruncated = false;
+            this.previewGeometryCount = 0;
             this.canRenderGeometry = false;
             this.completedToastShownForJobId = null;
             this.clearMap();

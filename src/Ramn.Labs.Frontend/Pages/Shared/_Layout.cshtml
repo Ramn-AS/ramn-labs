@@ -42,13 +42,13 @@
                             <a class="nav-link" asp-area="" asp-page="/Index">Home</a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" asp-area="" asp-page="/Tools/GeohashBrowser">Geohash Browser</a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Tools/PolyHasher">PolyHasher</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Tools/GeoRaptor">GeoRaptor</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Tools/GeohashBrowser">Geohash Browser</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/About">About</a>
@@ -66,7 +66,7 @@
             </div>
         </nav>
     </header>
-    <div class="container">
+    <div class="container site-content">
         <main role="main" class="pb-3">
             @RenderBody()
         </main>

@@ -18,7 +18,23 @@ html {
 }
 
 body {
-  margin-bottom: 60px;
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  --site-footer-height: 60px;
+}
+
+.site-content {
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+.footer {
+  flex-shrink: 0;
+  min-height: var(--site-footer-height);
+  display: flex;
+  align-items: center;
 }
 
 body.map-fullscreen-active {

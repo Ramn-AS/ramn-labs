@@ -15,8 +15,8 @@
      x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''">
     <section class="card shadow-sm controls-panel">
         <div class="card-body">
-            <h1 class="h4 mb-3">GeoRaptor Compression Tool</h1>
-            <p class="text-body-secondary small">Provide geohashes as text or upload a text file (one geohash per line).</p>
+            <h1 class="h4 mb-3">GeoRaptor</h1>
+            <p class="text-body-secondary small">Georaptor optimizes geohash sets by compressing them into fewer cells while preserving coverage. Start by providing geohashes as text or upload a text file (one geohash per line).</p>
 
             <div class="mb-3">
                 <label class="form-label" for="geohashText">Paste geohashes</label>
@@ -35,21 +35,26 @@
             <div class="row g-2 mb-3">
                 <div class="col-6">
                     <label class="form-label" for="minPrecision">Min precision</label>
-                    <input id="minPrecision" type="number" class="form-control" min="1" max="12" x-model.number="minPrecision" />
+                    <input id="minPrecision" type="number" class="form-control" min="1" max="12" x-model.number="minPrecision" x-on:change="persistPreferences()" />
                 </div>
                 <div class="col-6">
                     <label class="form-label" for="maxPrecision">Max precision</label>
-                    <input id="maxPrecision" type="number" class="form-control" min="1" max="12" x-model.number="maxPrecision" />
+                    <input id="maxPrecision" type="number" class="form-control" min="1" max="12" x-model.number="maxPrecision" x-on:change="persistPreferences()" />
                 </div>
+            </div>
+
+            <div class="form-check mb-3">
+                <input id="zipBeforeDownload" class="form-check-input" type="checkbox" x-model="zipBeforeDownload" x-on:change="persistPreferences()" />
+                <label class="form-check-label" for="zipBeforeDownload">Zip result before download (Recommended)</label>
             </div>
 
             <div class="d-flex gap-2">
                 <button type="button" class="btn btn-primary" x-on:click="submitJob()" x-bind:disabled="isSubmitting || isSubmissionLocked()">Compress</button>
-                <button type="button" class="btn btn-outline-secondary" x-on:click="clearAll()">Clear</button>
                 <a class="btn"
                    x-bind:href="canDownload ? downloadUrl : null"
                    x-bind:class="{ 'btn-success': canDownload, 'btn-outline-secondary disabled': !canDownload }"
                    x-bind:aria-disabled="!canDownload">Download</a>
+                <button type="button" class="btn btn-outline-secondary" x-on:click="clearAll()">Clear Map</button>
             </div>
 
             <hr />
@@ -62,6 +67,7 @@
                 <div x-show="backendDurationMilliseconds !== null"><strong>Backend duration:</strong> <span x-text="formatDuration(backendDurationMilliseconds)"></span></div>
                 <div x-show="downloadSizeBytes !== null"><strong>Download size:</strong> <span x-text="formatBytes(downloadSizeBytes)"></span></div>
                 <div x-show="geometryCount > 0"><strong>Rendered geometries:</strong> <span x-text="geometryCount"></span></div>
+                <div x-show="previewTruncated"><strong>Preview:</strong> Showing first <span x-text="previewGeometryCount"></span> geometries on map.</div>
                 <div class="text-danger mt-2" x-show="error" x-text="error"></div>
             </div>
 
@@ -72,6 +78,9 @@
                  hx-get="/api/compression-jobs/queue-status/fragment"
                  hx-trigger="load, every 2s"
                  hx-swap="innerHTML">Loading queue status...</div>
+
+            <hr class="my-3" />
+            <em>This tool uses <a href="https://github.com/andrerav/Geohash.GeoRaptor">Geohash.GeoRaptor</a> for geohash compression on the backend. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.GeoRaptor/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.GeoRaptor">Github</a>.</em>
         </div>
     </section>
 
@@ -93,12 +102,6 @@
         <div class="map-container" x-ref="map"></div>
     </section>
 </div>
-<section class="card shadow-sm mt-3">
-    <div class="card-body">
-        <em>This tool uses <a href="https://github.com/andrerav/Geohash.GeoRaptor">Geohash.GeoRaptor</a> for geohash compression on the backend. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.GeoRaptor/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.GeoRaptor">Github</a>.</em>
-    </div>
-</section>
-
 @section Scripts {
     <partial name="_LeafletMapScriptsPartial" />
     <script src="~/_content/Ramn.Labs.Frontend/js/tools/georaptor.js" asp-append-version="true"></script>

@@ -16,8 +16,8 @@
      x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''">
     <section class="card shadow-sm controls-panel">
         <div class="card-body">
-            <h1 class="h4 mb-3">PolyHasher Tool</h1>
-            <p class="text-body-secondary small">Paste POLYGON or MULTIPOLYGON WKT, or draw a polygon directly on the map.</p>
+            <h1 class="h4 mb-3">PolyHasher</h1>
+            <p class="text-body-secondary small">Polyhasher generates optimized geohash sets from your polygons. Paste POLYGON or MULTIPOLYGON WKT, or draw a polygon directly on the map.</p>
 
             <div class="mb-3">
                 <label class="form-label" for="wktInput">Geometry WKT</label>
@@ -32,11 +32,11 @@
             <div class="row g-2 mb-3">
                 <div class="col-6">
                     <label class="form-label" for="precision">Precision</label>
-                    <input id="precision" type="number" class="form-control" min="1" max="12" x-model.number="precision" />
+                    <input id="precision" type="number" class="form-control" min="1" max="12" x-model.number="precision" x-on:change="persistPreferences()" />
                 </div>
                 <div class="col-6">
                     <label class="form-label" for="mode">Mode</label>
-                    <select id="mode" class="form-select" x-model="mode">
+                    <select id="mode" class="form-select" x-model="mode" x-on:change="persistPreferences()">
                         <option value="intersects">Intersects</option>
                         <option value="contains">Contains</option>
                     </select>
@@ -44,17 +44,17 @@
             </div>
 
             <div class="form-check mb-3">
-                <input id="enableCompression" class="form-check-input" type="checkbox" x-model="enableCompression" />
-                <label class="form-check-label" for="enableCompression">Enable compression</label>
+                <input id="zipBeforeDownload" class="form-check-input" type="checkbox" x-model="zipBeforeDownload" x-on:change="persistPreferences()" />
+                <label class="form-check-label" for="zipBeforeDownload">Zip result before download (Recommended)</label>
             </div>
 
             <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="btn btn-primary" x-on:click="submitJob()" x-bind:disabled="isSubmitting || isSubmissionLocked()">Encode</button>
-                <button type="button" class="btn btn-outline-secondary" x-on:click="clearAll()">Clear</button>
                 <a class="btn"
                    x-bind:href="canDownload ? downloadUrl : null"
                    x-bind:class="{ 'btn-success': canDownload, 'btn-outline-secondary disabled': !canDownload }"
                    x-bind:aria-disabled="!canDownload">Download</a>
+                <button type="button" class="btn btn-outline-secondary" x-on:click="clearAll()">Clear Map</button>
             </div>
 
             <hr />
@@ -64,6 +64,7 @@
                 <div><strong>Message:</strong> <span x-text="message"></span></div>
                 <div x-show="estimatedWaitSeconds !== null"><strong>Estimated wait:</strong> <span x-text="estimatedWaitSeconds"></span> sec</div>
                 <div x-show="geohashCount !== null"><strong>Geohash count:</strong> <span x-text="geohashCount"></span></div>
+                <div x-show="zipRatio !== null"><strong>Zip ratio:</strong> <span x-text="formatRatio(zipRatio)"></span></div>
                 <div x-show="backendDurationMilliseconds !== null"><strong>Backend duration:</strong> <span x-text="formatDuration(backendDurationMilliseconds)"></span></div>
                 <div x-show="downloadSizeBytes !== null"><strong>Download size:</strong> <span x-text="formatBytes(downloadSizeBytes)"></span></div>
                 <div x-show="previewTruncated"><strong>Preview:</strong> Showing first <span x-text="geohashes.length"></span> values on map.</div>
@@ -77,7 +78,12 @@
                  hx-get="/api/polyhasher-jobs/queue-status/fragment"
                  hx-trigger="load, every 2s"
                  hx-swap="innerHTML">Loading queue status...</div>
+            <hr class="my-3" />
+
+
         </div>
+        <hr class="my-3" />
+        <em>This tool uses <a href="https://github.com/andrerav/Geohash.Polyhasher">Geohash.Polyhasher</a> for computing geohashes from a polygon. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.Polyhasher/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.Polyhasher">Github</a>.</em>
     </section>
 
     <section class="card shadow-sm overflow-hidden map-card">
@@ -98,11 +104,6 @@
         <div class="map-container" x-ref="map"></div>
     </section>
 </div>
-<section class="card shadow-sm mt-3">
-    <div class="card-body">
-        <em>This tool uses <a href="https://github.com/andrerav/Geohash.Polyhasher">Geohash.Polyhasher</a> for computing geohashes from a polygon. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.Polyhasher/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.Polyhasher">Github</a>.</em>
-    </div>
-</section>
 
 
 @section Scripts {

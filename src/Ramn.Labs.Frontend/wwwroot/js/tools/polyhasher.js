@@ -5,6 +5,12 @@ document.addEventListener("alpine:init", () => {
         return;
     }
 
+    const preferencesKeys = {
+        precision: "ramnlabs.polyhasher.precision",
+        mode: "ramnlabs.polyhasher.mode",
+        zipBeforeDownload: "ramnlabs.polyhasher.zipBeforeDownload"
+    };
+
     const statusCodes = tools.statusCodes;
 
     function normalizeWktInput(value) {
@@ -81,12 +87,13 @@ document.addEventListener("alpine:init", () => {
         wktInput: "",
         precision: 5,
         mode: "intersects",
-        enableCompression: false,
+        zipBeforeDownload: true,
         jobId: null,
         status: null,
         message: "Ready.",
         error: null,
         geohashCount: null,
+        zipRatio: null,
         geohashes: [],
         previewTruncated: false,
         canDownload: false,
@@ -114,6 +121,8 @@ document.addEventListener("alpine:init", () => {
                 poll: () => this.pollStatus()
             });
 
+            this.loadPreferences();
+
             this.mapMaximized = preferencesStore && typeof preferencesStore.getMapMaximizedPreference === "function"
                 ? preferencesStore.getMapMaximizedPreference()
                 : false;
@@ -136,6 +145,38 @@ document.addEventListener("alpine:init", () => {
                 this.ensureMapSize();
                 this.updateInputGeometryPreview(false);
             });
+        },
+
+        loadPreferences() {
+            if (!preferencesStore || typeof preferencesStore.getPreference !== "function") {
+                return;
+            }
+
+            const precision = Number(preferencesStore.getPreference(preferencesKeys.precision, this.precision));
+            this.precision = Number.isFinite(precision) ? Math.min(12, Math.max(1, Math.floor(precision))) : this.precision;
+
+            const mode = preferencesStore.getPreference(preferencesKeys.mode, this.mode);
+            this.mode = mode === "contains" ? "contains" : "intersects";
+
+            this.zipBeforeDownload = preferencesStore.getPreference(preferencesKeys.zipBeforeDownload, true) !== false;
+        },
+
+        persistPreferences() {
+            if (!preferencesStore || typeof preferencesStore.setPreference !== "function") {
+                return;
+            }
+
+            preferencesStore.setPreference(preferencesKeys.precision, this.precision);
+            preferencesStore.setPreference(preferencesKeys.mode, this.mode);
+            preferencesStore.setPreference(preferencesKeys.zipBeforeDownload, this.zipBeforeDownload);
+        },
+
+        formatRatio(value) {
+            if (!Number.isFinite(value)) {
+                return "-";
+            }
+
+            return `${(Number(value) * 100).toFixed(1)}%`;
         },
 
         initializeMap() {
@@ -411,7 +452,7 @@ document.addEventListener("alpine:init", () => {
                     wkt: this.wktInput,
                     precision: this.precision,
                     mode: this.mode,
-                    enableCompression: this.enableCompression
+                    zipBeforeDownload: this.zipBeforeDownload
                 };
 
                 const response = await fetch("/api/polyhasher-jobs/", {
@@ -489,12 +530,16 @@ document.addEventListener("alpine:init", () => {
                 this.pollAfterSeconds = payload.pollAfterSeconds || 2;
                 this.estimatedWaitSeconds = payload.estimatedWaitSeconds;
                 this.geohashCount = payload.geohashCount;
+                this.zipRatio = payload.zipRatio ?? null;
                 this.canDownload = payload.canDownload;
                 this.backendDurationMilliseconds = payload.backendDurationMilliseconds ?? null;
                 this.downloadSizeBytes = payload.downloadSizeBytes ?? null;
                 this.previewTruncated = payload.previewTruncated === true;
                 this.geohashes = Array.isArray(payload.geohashes) ? payload.geohashes : [];
-                this.renderGeohashPreview(statusCode === statusCodes.completed);
+                this.renderGeohashPreview(false);
+                if (statusCode === statusCodes.completed) {
+                    this.updateInputGeometryPreview(true);
+                }
 
                 if (payload.error) {
                     this.error = payload.error.message;
@@ -544,14 +589,12 @@ document.addEventListener("alpine:init", () => {
         clearAll() {
             this.stopPolling();
             this.wktInput = "";
-            this.precision = 5;
-            this.mode = "intersects";
-            this.enableCompression = false;
             this.jobId = null;
             this.status = null;
             this.message = "Ready.";
             this.error = null;
             this.geohashCount = null;
+            this.zipRatio = null;
             this.geohashes = [];
             this.previewTruncated = false;
             this.canDownload = false;

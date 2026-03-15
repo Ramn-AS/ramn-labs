@@ -9,6 +9,16 @@
     <p></p>
     <p></p>
     <div class="tool-tile-grid">
+        <a class="tool-tile-card" asp-page="/Tools/GeohashBrowser" aria-label="Open Geohash Browser tool">
+            <div class="tool-tile-image-wrap">
+                <img class="tool-tile-image" src="~/_content/Ramn.Labs.Frontend/images/tools/geohash-browser-preview.jpg" alt="Geohash Browser preview" onerror="this.style.display='none'; this.parentElement.classList.add('is-empty');" />
+                <span class="tool-tile-image-placeholder">Add image: wwwroot/images/tools/geohash-browser-preview.jpg</span>
+            </div>
+            <div class="tool-tile-body">
+                <h2 class="h4 mb-2">Geohash Browser</h2>
+                <p class="mb-0 text-body-secondary">The ergonomic geohash browser you always wanted. Browse the visible geohash grid for your current map view, select individual cells, and copy geohash values instantly.</p>
+            </div>
+        </a>        
         <a class="tool-tile-card" asp-page="/Tools/PolyHasher" aria-label="Open PolyHasher tool">
             <div class="tool-tile-image-wrap">
                 <img class="tool-tile-image" src="~/_content/Ramn.Labs.Frontend/images/tools/polyhasher-preview.jpg" alt="PolyHasher preview" onerror="this.style.display='none'; this.parentElement.classList.add('is-empty');" />
@@ -29,15 +39,6 @@
                 <p class="mb-0 text-body-secondary">Compress large geohash sets into fewer cells while preserving coverage, then inspect and download the compressed output.</p>
             </div>
         </a>
-        <a class="tool-tile-card" asp-page="/Tools/GeohashBrowser" aria-label="Open Geohash Browser tool">
-            <div class="tool-tile-image-wrap">
-                <img class="tool-tile-image" src="~/_content/Ramn.Labs.Frontend/images/tools/geohash-browser-preview.jpg" alt="Geohash Browser preview" onerror="this.style.display='none'; this.parentElement.classList.add('is-empty');" />
-                <span class="tool-tile-image-placeholder">Add image: wwwroot/images/tools/geohash-browser-preview.jpg</span>
-            </div>
-            <div class="tool-tile-body">
-                <h2 class="h4 mb-2">Geohash Browser</h2>
-                <p class="mb-0 text-body-secondary">Browse the visible geohash grid for your current map view, select individual cells, and copy geohash values instantly.</p>
-            </div>
-        </a>
+
     </div>
 </section>

@@ -46,7 +46,7 @@ public sealed class CompressionOptions
     /// <summary>
     /// Gets or sets maximum number of geometries to return in status response.
     /// </summary>
-    public int MapGeometryDisplayLimit { get; set; } = 5_000;
+    public int StatusPreviewLimit { get; set; } = 5_000;
 
     /// <summary>
     /// Gets or sets poll interval hint for clients.
@@ -172,6 +172,11 @@ public sealed class CompressionJobRecord : IBackgroundJobRecord<Guid>
     public int? CompressedCount { get; set; }
 
     /// <summary>
+    /// Gets or sets whether result file should be gzip-compressed.
+    /// </summary>
+    public bool ZipBeforeDownload { get; set; }
+
+    /// <summary>
     /// Gets or sets optional processing error.
     /// </summary>
     public BackgroundJobErrorDetails? Error { get; set; }
@@ -206,6 +211,11 @@ public sealed class CreateCompressionJobRequest
     /// Gets or sets maximum precision.
     /// </summary>
     public int MaxPrecision { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether result file should be gzip-compressed.
+    /// </summary>
+    public bool ZipBeforeDownload { get; set; }
 }
 
 /// <summary>
@@ -288,6 +298,11 @@ public sealed class CompressionJobStatusResponse
     /// Gets or sets geometries in WKT format when enabled.
     /// </summary>
     public List<string>? Geometries { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether not all geometries are included in preview.
+    /// </summary>
+    public bool PreviewTruncated { get; set; }
 
     /// <summary>
     /// Gets or sets optional structured error details.
@@ -617,15 +632,19 @@ public sealed class CompressionWorker : BackgroundService
 
             var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
             var filePrefix = $"{_options.DownloadFileNamePrefix}-{stamp}-{job.JobId}";
-            var resultPath = Path.Combine(rootPath, filePrefix + ".txt");
             var geometryPath = Path.Combine(rootPath, filePrefix + ".wkt");
-
-            await File.WriteAllLinesAsync(resultPath, sorted, Encoding.ASCII, linkedCts.Token);
+            var resultOutcome = await JobResultFileWriter.WriteLinesAsync(
+                rootPath,
+                filePrefix,
+                sorted,
+                Encoding.ASCII,
+                job.ZipBeforeDownload,
+                linkedCts.Token);
 
             var geometryLines = sorted.Select(x => $"SRID=4326;{GeometryWktSerializer.ToPolygonWkt(x)}").ToArray();
             await File.WriteAllLinesAsync(geometryPath, geometryLines, Encoding.UTF8, linkedCts.Token);
 
-            job.ResultFilePath = resultPath;
+            job.ResultFilePath = resultOutcome.FilePath;
             job.GeometryFilePath = geometryPath;
             job.CompressedCount = sorted.Length;
             job.Status = BackgroundJobStatus.Completed;
@@ -670,14 +689,19 @@ public sealed class CompletedArtifactsCleanupService : BackgroundService
 {
     private readonly IBackgroundJobStore<Guid, CompressionJobRecord> _store;
     private readonly CompressionOptions _options;
+    private readonly IWebHostEnvironment _environment;
 
     /// <summary>
     /// Initializes cleanup service dependencies.
     /// </summary>
-    public CompletedArtifactsCleanupService(IBackgroundJobStore<Guid, CompressionJobRecord> store, IOptions<CompressionOptions> options)
+    public CompletedArtifactsCleanupService(
+        IBackgroundJobStore<Guid, CompressionJobRecord> store,
+        IOptions<CompressionOptions> options,
+        IWebHostEnvironment environment)
     {
         _store = store;
         _options = options.Value;
+        _environment = environment;
     }
 
     /// <inheritdoc />
@@ -686,6 +710,7 @@ public sealed class CompletedArtifactsCleanupService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             CleanupExpiredCompletedJobs();
+            CleanupOrphanedArtifacts();
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
     }
@@ -706,6 +731,50 @@ public sealed class CompletedArtifactsCleanupService : BackgroundService
             TryDeleteFile(job.GeometryFilePath);
             _store.TryRemove(job.JobId, out _);
         }
+    }
+
+    private void CleanupOrphanedArtifacts()
+    {
+        var cutoffUtc = DateTimeOffset.UtcNow.AddMinutes(-Math.Max(1, _options.CompletedRetentionMinutes));
+        var rootPath = Path.Combine(_environment.ContentRootPath, _options.CompletedJobsPath);
+        if (!Directory.Exists(rootPath))
+        {
+            return;
+        }
+
+        var trackedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var job in _store.GetAll())
+        {
+            AddTrackedFile(trackedFiles, job.ResultFilePath);
+            AddTrackedFile(trackedFiles, job.GeometryFilePath);
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(rootPath, "*", SearchOption.TopDirectoryOnly))
+        {
+            var fullPath = Path.GetFullPath(filePath);
+            if (trackedFiles.Contains(fullPath))
+            {
+                continue;
+            }
+
+            var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+            if (lastWriteUtc > cutoffUtc.UtcDateTime)
+            {
+                continue;
+            }
+
+            TryDeleteFile(fullPath);
+        }
+    }
+
+    private static void AddTrackedFile(HashSet<string> trackedFiles, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        trackedFiles.Add(Path.GetFullPath(path));
     }
 
     private static void TryDeleteFile(string? path)
@@ -827,12 +896,26 @@ public static class CompressionJobEndpoints
             IFormFile? inputFile = null;
             int minPrecision;
             int maxPrecision;
+            var zipBeforeDownload = false;
 
             if (httpContext.Request.HasFormContentType)
             {
                 var form = await httpContext.Request.ReadFormAsync(cancellationToken);
                 inputText = form["inputText"].FirstOrDefault();
                 inputFile = form.Files.GetFile("inputFile");
+
+                var zipValue = form["zipBeforeDownload"].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(zipValue))
+                {
+                    zipBeforeDownload = zipValue.Trim().ToLowerInvariant() switch
+                    {
+                        "true" => true,
+                        "1" => true,
+                        "on" => true,
+                        "yes" => true,
+                        _ => false
+                    };
+                }
 
                 if (!int.TryParse(form["minPrecision"], NumberStyles.Integer, CultureInfo.InvariantCulture, out minPrecision)
                     || !int.TryParse(form["maxPrecision"], NumberStyles.Integer, CultureInfo.InvariantCulture, out maxPrecision))
@@ -847,6 +930,7 @@ public static class CompressionJobEndpoints
                 inputText = request.InputText;
                 minPrecision = request.MinPrecision;
                 maxPrecision = request.MaxPrecision;
+                zipBeforeDownload = request.ZipBeforeDownload;
             }
 
             GeohashInputParser.ValidateRequestPrecision(minPrecision, maxPrecision);
@@ -901,6 +985,7 @@ public static class CompressionJobEndpoints
                 RequestIpAddress = requestIpAddress,
                 MinPrecision = minPrecision,
                 MaxPrecision = maxPrecision,
+                ZipBeforeDownload = zipBeforeDownload,
                 InputGeohashes = geohashes
             };
 
@@ -967,7 +1052,7 @@ public static class CompressionJobEndpoints
                 ? (long)(job.CompletedAtUtc.Value - job.StartedAtUtc.Value).TotalMilliseconds
                 : null,
             CanDownload = job.Status == BackgroundJobStatus.Completed && !string.IsNullOrWhiteSpace(job.ResultFilePath),
-            CanRenderGeometry = job.Status == BackgroundJobStatus.Completed && (job.CompressedCount ?? int.MaxValue) <= config.MapGeometryDisplayLimit,
+            CanRenderGeometry = job.Status == BackgroundJobStatus.Completed,
             Error = job.Error
         };
 
@@ -978,7 +1063,10 @@ public static class CompressionJobEndpoints
 
         if (response.CanRenderGeometry && !string.IsNullOrWhiteSpace(job.GeometryFilePath) && File.Exists(job.GeometryFilePath))
         {
-            response.Geometries = File.ReadLines(job.GeometryFilePath).ToList();
+            var previewLimit = Math.Max(1, config.StatusPreviewLimit);
+            var geometryLines = File.ReadLines(job.GeometryFilePath).Take(previewLimit + 1).ToList();
+            response.PreviewTruncated = geometryLines.Count > previewLimit;
+            response.Geometries = geometryLines.Take(previewLimit).ToList();
         }
 
         return Results.Ok(response);
@@ -1014,10 +1102,14 @@ public static class CompressionJobEndpoints
         }
 
         var timestamp = (job.CompletedAtUtc ?? DateTimeOffset.UtcNow).ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        var fileName = $"{options.Value.DownloadFileNamePrefix}-{timestamp}-{job.JobId}.txt";
+        var isZip = string.Equals(Path.GetExtension(job.ResultFilePath), ".zip", StringComparison.OrdinalIgnoreCase);
+        var fileName = isZip
+            ? $"{options.Value.DownloadFileNamePrefix}-{timestamp}-{job.JobId}.zip"
+            : $"{options.Value.DownloadFileNamePrefix}-{timestamp}-{job.JobId}.txt";
 
         var stream = File.OpenRead(job.ResultFilePath);
-        return Results.File(stream, "text/plain; charset=us-ascii", fileName, enableRangeProcessing: false);
+        var contentType = isZip ? "application/zip" : "text/plain; charset=us-ascii";
+        return Results.File(stream, contentType, fileName, enableRangeProcessing: false);
     }
 
     private static QueueStatusResponse BuildQueueStatus(IBackgroundJobStore<Guid, CompressionJobRecord> store, CompressionOptions options)

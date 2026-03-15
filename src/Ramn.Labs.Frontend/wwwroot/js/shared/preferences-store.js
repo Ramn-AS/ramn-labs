@@ -45,6 +45,24 @@
         return applyTheme(theme);
     }
 
+    function getPreference(key, fallbackValue) {
+        const raw = safeRead(key);
+        if (raw === null) {
+            return fallbackValue;
+        }
+
+        try {
+            return JSON.parse(raw);
+        }
+        catch {
+            return fallbackValue;
+        }
+    }
+
+    function setPreference(key, value) {
+        safeWrite(key, JSON.stringify(value));
+    }
+
     function getMapMaximizedPreference() {
         return safeRead(mapMaximizedStorageKey) === "1";
     }
@@ -61,6 +79,8 @@
         setTheme,
         applyTheme,
         resolveAppliedTheme,
+        getPreference,
+        setPreference,
         getMapMaximizedPreference,
         setMapMaximizedPreference
     };

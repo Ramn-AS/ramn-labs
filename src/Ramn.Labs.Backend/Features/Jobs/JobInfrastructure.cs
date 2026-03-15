@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using System.IO.Compression;
+using System.Text;
 
 namespace Ramn.Labs.Backend.Features.Jobs;
 
@@ -245,5 +247,85 @@ public sealed class BackgroundJobWaitEstimator<TId, TJob>
         var batches = (int)Math.Ceiling(queuePosition / (double)_maxParallelExecutions);
 
         return batches * _jobTimeoutSeconds;
+    }
+}
+
+/// <summary>
+/// Describes persisted job output artifact details.
+/// </summary>
+public sealed class JobResultWriteOutcome
+{
+    /// <summary>
+    /// Gets or sets stored artifact file path.
+    /// </summary>
+    public required string FilePath { get; set; }
+
+    /// <summary>
+    /// Gets or sets uncompressed content size in bytes.
+    /// </summary>
+    public required long UncompressedSizeBytes { get; set; }
+
+    /// <summary>
+    /// Gets or sets stored file size in bytes.
+    /// </summary>
+    public required long StoredSizeBytes { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether zip archive compression was applied.
+    /// </summary>
+    public required bool IsZip { get; set; }
+}
+
+/// <summary>
+/// Writes line-based job results as plain text or gzip-compressed artifacts.
+/// </summary>
+public static class JobResultFileWriter
+{
+    /// <summary>
+    /// Persists a line-based output file and returns size metadata.
+    /// </summary>
+    public static async Task<JobResultWriteOutcome> WriteLinesAsync(
+        string directoryPath,
+        string filePrefix,
+        IReadOnlyList<string> lines,
+        Encoding encoding,
+        bool zipBeforeDownload,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(directoryPath);
+
+        var rawText = string.Join(Environment.NewLine, lines);
+        var bytes = encoding.GetBytes(rawText);
+
+        if (zipBeforeDownload)
+        {
+            var zipPath = Path.Combine(directoryPath, filePrefix + ".zip");
+            await using (var stream = File.Create(zipPath))
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: false))
+            {
+                var entry = archive.CreateEntry(filePrefix + ".txt", CompressionLevel.Optimal);
+                await using var entryStream = entry.Open();
+                await entryStream.WriteAsync(bytes.AsMemory(0, bytes.Length), cancellationToken);
+            }
+
+            var storedBytes = new FileInfo(zipPath).Length;
+            return new JobResultWriteOutcome
+            {
+                FilePath = zipPath,
+                UncompressedSizeBytes = bytes.LongLength,
+                StoredSizeBytes = storedBytes,
+                IsZip = true
+            };
+        }
+
+        var textPath = Path.Combine(directoryPath, filePrefix + ".txt");
+        await File.WriteAllBytesAsync(textPath, bytes, cancellationToken);
+        return new JobResultWriteOutcome
+        {
+            FilePath = textPath,
+            UncompressedSizeBytes = bytes.LongLength,
+            StoredSizeBytes = bytes.LongLength,
+            IsZip = false
+        };
     }
 }

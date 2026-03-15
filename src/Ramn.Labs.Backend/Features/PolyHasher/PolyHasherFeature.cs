@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using Geohash.GeoRaptor;
 using Geohash.Polyhasher;
 using Microsoft.Extensions.Options;
 using NetTopologySuite.Geometries;
@@ -184,14 +183,34 @@ public sealed class PolyHasherJobRecord : IBackgroundJobRecord<Guid>
     public string Mode { get; set; } = PolyHasherModeValues.Intersects;
 
     /// <summary>
-    /// Gets or sets whether output compression is enabled.
+    /// Gets or sets whether result file should be gzip-compressed.
     /// </summary>
-    public bool EnableCompression { get; set; }
+    public bool ZipBeforeDownload { get; set; }
 
     /// <summary>
     /// Gets or sets output geohash count.
     /// </summary>
     public int? GeohashCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets zip ratio (compressed size / uncompressed size).
+    /// </summary>
+    public double? ZipRatio { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether result artifact is gzip-compressed.
+    /// </summary>
+    public bool ResultIsZipped { get; set; }
+
+    /// <summary>
+    /// Gets or sets preview values for status payloads.
+    /// </summary>
+    public List<string>? PreviewGeohashes { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether preview is truncated.
+    /// </summary>
+    public bool PreviewTruncated { get; set; }
 
     /// <summary>
     /// Gets or sets optional processing error.
@@ -225,9 +244,9 @@ public sealed class CreatePolyHasherJobRequest
     public string Mode { get; set; } = PolyHasherModeValues.Intersects;
 
     /// <summary>
-    /// Gets or sets whether output compression is enabled.
+    /// Gets or sets whether result file should be gzip-compressed.
     /// </summary>
-    public bool EnableCompression { get; set; }
+    public bool ZipBeforeDownload { get; set; }
 }
 
 /// <summary>
@@ -285,6 +304,16 @@ public sealed class PolyHasherJobStatusResponse
     /// Gets or sets output geohash count when available.
     /// </summary>
     public int? GeohashCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets zip ratio (compressed size / uncompressed size).
+    /// </summary>
+    public double? ZipRatio { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether download artifact is gzip-compressed.
+    /// </summary>
+    public bool ResultIsZipped { get; set; }
 
     /// <summary>
     /// Gets or sets whether download is available.
@@ -458,8 +487,6 @@ public static class PolyHasherRequestValidator
 /// </summary>
 public sealed class PolyHasherWorker : BackgroundService
 {
-    private const int CompressionMinPrecision = 1;
-
     private readonly IPolyHasherJobQueue _queue;
     private readonly IBackgroundJobStore<Guid, PolyHasherJobRecord> _store;
     private readonly IPolyHasherService _polyHasherService;
@@ -568,11 +595,6 @@ public sealed class PolyHasherWorker : BackgroundService
                 var parsedMode = PolyHasherRequestValidator.ValidateAndParseMode(job.Mode);
                 var output = _polyHasherService.Encode(job.WktInput ?? string.Empty, job.Precision, parsedMode);
 
-                if (job.EnableCompression)
-                {
-                    output = GeoRaptor.Compress(output, CompressionMinPrecision, job.Precision);
-                }
-
                 if (output.Count > Math.Max(1, _options.MaxOutputGeohashCount))
                 {
                     throw new PolyHasherValidationException(
@@ -590,12 +612,24 @@ public sealed class PolyHasherWorker : BackgroundService
 
             var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
             var filePrefix = $"{_options.DownloadFileNamePrefix}-{stamp}-{job.JobId}";
-            var resultPath = Path.Combine(rootPath, filePrefix + ".txt");
+            var writeOutcome = await JobResultFileWriter.WriteLinesAsync(
+                rootPath,
+                filePrefix,
+                sorted,
+                Encoding.ASCII,
+                job.ZipBeforeDownload,
+                linkedCts.Token);
 
-            await File.WriteAllLinesAsync(resultPath, sorted, Encoding.ASCII, linkedCts.Token);
-
-            job.ResultFilePath = resultPath;
-            job.GeohashCount = sorted.Length;
+            var afterCount = sorted.Length;
+            job.ResultFilePath = writeOutcome.FilePath;
+            job.GeohashCount = afterCount;
+            job.ZipRatio = writeOutcome.IsZip && writeOutcome.UncompressedSizeBytes > 0
+                ? (double)writeOutcome.StoredSizeBytes / writeOutcome.UncompressedSizeBytes
+                : null;
+            job.ResultIsZipped = writeOutcome.IsZip;
+            var previewLimit = Math.Max(1, _options.StatusPreviewLimit);
+            job.PreviewTruncated = afterCount > previewLimit;
+            job.PreviewGeohashes = sorted.Take(previewLimit).ToList();
             job.Status = BackgroundJobStatus.Completed;
             job.CompletedAtUtc = DateTimeOffset.UtcNow;
             job.Error = null;
@@ -638,14 +672,19 @@ public sealed class PolyHasherCleanupService : BackgroundService
 {
     private readonly IBackgroundJobStore<Guid, PolyHasherJobRecord> _store;
     private readonly PolyHasherOptions _options;
+    private readonly IWebHostEnvironment _environment;
 
     /// <summary>
     /// Initializes cleanup service dependencies.
     /// </summary>
-    public PolyHasherCleanupService(IBackgroundJobStore<Guid, PolyHasherJobRecord> store, IOptions<PolyHasherOptions> options)
+    public PolyHasherCleanupService(
+        IBackgroundJobStore<Guid, PolyHasherJobRecord> store,
+        IOptions<PolyHasherOptions> options,
+        IWebHostEnvironment environment)
     {
         _store = store;
         _options = options.Value;
+        _environment = environment;
     }
 
     /// <inheritdoc />
@@ -654,6 +693,7 @@ public sealed class PolyHasherCleanupService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             CleanupExpiredCompletedJobs();
+            CleanupOrphanedArtifacts();
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
     }
@@ -673,6 +713,49 @@ public sealed class PolyHasherCleanupService : BackgroundService
             TryDeleteFile(job.ResultFilePath);
             _store.TryRemove(job.JobId, out _);
         }
+    }
+
+    private void CleanupOrphanedArtifacts()
+    {
+        var cutoffUtc = DateTimeOffset.UtcNow.AddMinutes(-Math.Max(1, _options.CompletedRetentionMinutes));
+        var rootPath = Path.Combine(_environment.ContentRootPath, _options.CompletedJobsPath);
+        if (!Directory.Exists(rootPath))
+        {
+            return;
+        }
+
+        var trackedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var job in _store.GetAll())
+        {
+            AddTrackedFile(trackedFiles, job.ResultFilePath);
+        }
+
+        foreach (var filePath in Directory.EnumerateFiles(rootPath, "*", SearchOption.TopDirectoryOnly))
+        {
+            var fullPath = Path.GetFullPath(filePath);
+            if (trackedFiles.Contains(fullPath))
+            {
+                continue;
+            }
+
+            var lastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+            if (lastWriteUtc > cutoffUtc.UtcDateTime)
+            {
+                continue;
+            }
+
+            TryDeleteFile(fullPath);
+        }
+    }
+
+    private static void AddTrackedFile(HashSet<string> trackedFiles, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        trackedFiles.Add(Path.GetFullPath(path));
     }
 
     private static void TryDeleteFile(string? path)
@@ -724,17 +807,18 @@ public static class PolyHasherEndpoints
             string? wkt = null;
             int precision;
             string? mode = null;
-            var enableCompression = false;
+            var zipBeforeDownload = false;
 
             if (httpContext.Request.HasFormContentType)
             {
                 var form = await httpContext.Request.ReadFormAsync(cancellationToken);
                 wkt = form["wkt"].FirstOrDefault();
                 mode = form["mode"].FirstOrDefault();
-                var enableCompressionValue = form["enableCompression"].FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(enableCompressionValue))
+
+                var zipValue = form["zipBeforeDownload"].FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(zipValue))
                 {
-                    enableCompression = enableCompressionValue.Trim().ToLowerInvariant() switch
+                    zipBeforeDownload = zipValue.Trim().ToLowerInvariant() switch
                     {
                         "true" => true,
                         "1" => true,
@@ -756,7 +840,7 @@ public static class PolyHasherEndpoints
                 wkt = request.Wkt;
                 precision = request.Precision;
                 mode = request.Mode;
-                enableCompression = request.EnableCompression;
+                zipBeforeDownload = request.ZipBeforeDownload;
             }
 
             var config = options.Value;
@@ -799,7 +883,7 @@ public static class PolyHasherEndpoints
                 WktInput = normalizedWkt,
                 Precision = precision,
                 Mode = normalizedMode,
-                EnableCompression = enableCompression
+                ZipBeforeDownload = zipBeforeDownload
             };
 
             store.Add(job);
@@ -861,19 +945,19 @@ public static class PolyHasherEndpoints
             PollAfterSeconds = Math.Max(1, config.PollingIntervalSeconds),
             EstimatedWaitSeconds = waitEstimator.EstimateWaitSeconds(job.JobId),
             GeohashCount = job.GeohashCount,
+            ZipRatio = job.ZipRatio,
+            ResultIsZipped = job.ResultIsZipped,
             CanDownload = job.Status == BackgroundJobStatus.Completed && !string.IsNullOrWhiteSpace(job.ResultFilePath),
             BackendDurationMilliseconds = job.StartedAtUtc.HasValue && job.CompletedAtUtc.HasValue
                 ? (long)(job.CompletedAtUtc.Value - job.StartedAtUtc.Value).TotalMilliseconds
                 : null,
+            Geohashes = job.PreviewGeohashes,
+            PreviewTruncated = job.PreviewTruncated,
             Error = job.Error
         };
 
         if (response.CanDownload && !string.IsNullOrWhiteSpace(job.ResultFilePath) && File.Exists(job.ResultFilePath))
         {
-            var previewLimit = Math.Max(1, config.StatusPreviewLimit);
-            var lines = File.ReadLines(job.ResultFilePath).Take(previewLimit + 1).ToList();
-            response.PreviewTruncated = lines.Count > previewLimit;
-            response.Geohashes = lines.Take(previewLimit).ToList();
             response.DownloadSizeBytes = new FileInfo(job.ResultFilePath).Length;
         }
 
@@ -910,10 +994,14 @@ public static class PolyHasherEndpoints
         }
 
         var timestamp = (job.CompletedAtUtc ?? DateTimeOffset.UtcNow).ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        var fileName = $"{options.Value.DownloadFileNamePrefix}-{timestamp}-{job.JobId}.txt";
+        var isZip = string.Equals(Path.GetExtension(job.ResultFilePath), ".zip", StringComparison.OrdinalIgnoreCase);
+        var fileName = isZip
+            ? $"{options.Value.DownloadFileNamePrefix}-{timestamp}-{job.JobId}.zip"
+            : $"{options.Value.DownloadFileNamePrefix}-{timestamp}-{job.JobId}.txt";
 
         var stream = File.OpenRead(job.ResultFilePath);
-        return Results.File(stream, "text/plain; charset=us-ascii", fileName, enableRangeProcessing: false);
+        var contentType = isZip ? "application/zip" : "text/plain; charset=us-ascii";
+        return Results.File(stream, contentType, fileName, enableRangeProcessing: false);
     }
 
     private static PolyHasherQueueStatusResponse BuildQueueStatus(IBackgroundJobStore<Guid, PolyHasherJobRecord> store, PolyHasherOptions options)
