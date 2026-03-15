@@ -1,5 +1,6 @@
 document.addEventListener("alpine:init", () => {
     const tools = window.ramnLabsTools;
+    const preferencesStore = window.preferencesStore;
     if (!tools) {
         return;
     }
@@ -30,12 +31,32 @@ document.addEventListener("alpine:init", () => {
         mapThemeController: null,
         featureLayer: null,
         basemapLabel: "CARTO",
+        mapMaximized: false,
+        maximizedTopOffset: 0,
+        resizeHandler: null,
 
         init() {
             this.pollController = tools.createPollingController({
                 getDelaySeconds: () => this.pollAfterSeconds,
                 poll: () => this.pollStatus()
             });
+
+            this.mapMaximized = preferencesStore && typeof preferencesStore.getMapMaximizedPreference === "function"
+                ? preferencesStore.getMapMaximizedPreference()
+                : false;
+            if (this.mapMaximized) {
+                this.updateMapMaximizedOffset();
+                document.body.classList.add("map-fullscreen-active");
+            }
+
+            this.resizeHandler = () => {
+                if (this.mapMaximized) {
+                    this.updateMapMaximizedOffset();
+                }
+
+                this.ensureMapSize();
+            };
+            window.addEventListener("resize", this.resizeHandler);
 
             window.requestAnimationFrame(() => {
                 this.initializeMap();
@@ -77,6 +98,30 @@ document.addEventListener("alpine:init", () => {
             }
 
             this.mapThemeController.ensureMapSize();
+        },
+
+        updateMapMaximizedOffset() {
+            const navbar = document.querySelector("header .navbar");
+            this.maximizedTopOffset = navbar ? Math.max(0, Math.ceil(navbar.getBoundingClientRect().bottom)) : 0;
+        },
+
+        toggleMapMaximized() {
+            this.mapMaximized = !this.mapMaximized;
+            if (preferencesStore && typeof preferencesStore.setMapMaximizedPreference === "function") {
+                preferencesStore.setMapMaximizedPreference(this.mapMaximized);
+            }
+
+            if (this.mapMaximized) {
+                this.updateMapMaximizedOffset();
+                document.body.classList.add("map-fullscreen-active");
+            }
+            else {
+                document.body.classList.remove("map-fullscreen-active");
+            }
+
+            this.$nextTick(() => {
+                this.ensureMapSize();
+            });
         },
 
         useOsmBasemap() {
@@ -347,6 +392,13 @@ document.addEventListener("alpine:init", () => {
 
         destroy() {
             this.stopPolling();
+
+            document.body.classList.remove("map-fullscreen-active");
+
+            if (this.resizeHandler) {
+                window.removeEventListener("resize", this.resizeHandler);
+                this.resizeHandler = null;
+            }
 
             if (this.mapThemeController) {
                 this.mapThemeController.dispose();

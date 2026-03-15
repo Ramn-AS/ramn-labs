@@ -10,19 +10,13 @@
     <link rel="stylesheet" href="~/_content/Ramn.Labs.Frontend/css/tools/polyhasher.css" asp-append-version="true" />
 }
 
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <h1 class="h3 m-0">PolyHasher Tool</h1>
-    <div id="queue-live-status"
-         class="status-chip"
-         hx-get="/api/polyhasher-jobs/queue-status/fragment"
-         hx-trigger="load, every 2s"
-         hx-swap="innerHTML">Loading queue status...</div>
-</div>
-
-<div x-data="polyhasherTool()" class="polyhasher-grid">
-    <section class="card shadow-sm">
+<div x-data="polyhasherTool()"
+     class="polyhasher-grid"
+     x-bind:class="{ 'map-maximized': mapMaximized }"
+     x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''">
+    <section class="card shadow-sm controls-panel">
         <div class="card-body">
-            <h2 class="h5">Input</h2>
+            <h1 class="h4 mb-3">PolyHasher Tool</h1>
             <p class="text-body-secondary small">Paste POLYGON or MULTIPOLYGON WKT, or draw a polygon directly on the map.</p>
 
             <div class="mb-3">
@@ -75,10 +69,32 @@
                 <div x-show="previewTruncated"><strong>Preview:</strong> Showing first <span x-text="geohashes.length"></span> values on map.</div>
                 <div class="text-danger mt-2" x-show="error" x-text="error"></div>
             </div>
+
+            <hr class="my-3" />
+
+            <div id="queue-live-status"
+                 class="status-chip"
+                 hx-get="/api/polyhasher-jobs/queue-status/fragment"
+                 hx-trigger="load, every 2s"
+                 hx-swap="innerHTML">Loading queue status...</div>
         </div>
     </section>
 
-    <section class="card shadow-sm overflow-hidden">
+    <section class="card shadow-sm overflow-hidden map-card">
+        <div class="map-canvas-actions">
+            <button type="button"
+                    class="btn btn-sm btn-light map-maximize-button"
+                    x-on:click="toggleMapMaximized()"
+                    x-bind:title="mapMaximized ? 'Restore map' : 'Maximize map'"
+                    x-bind:aria-label="mapMaximized ? 'Restore map' : 'Maximize map'">
+                <svg x-show="!mapMaximized" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M1 1h6v1.5H3.56L7.22 6.16 6.16 7.22 2.5 3.56V7H1zm14 0v6h-1.5V3.56l-3.66 3.66-1.06-1.06 3.66-3.66H9V1zm0 14H9v-1.5h3.44l-3.66-3.66 1.06-1.06 3.66 3.66V9H15zM1 15V9h1.5v3.44l3.66-3.66 1.06 1.06-3.66 3.66H7V15z"></path>
+                </svg>
+                <svg x-show="mapMaximized" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M6.25 1H1v5.25h1.5V3.56L6.22 7.3l1.06-1.06L3.56 2.5h2.69zm3.5 0v1.5h2.69L8.72 6.22 9.78 7.3l3.72-3.74v2.69H15V1zM6.22 8.72 2.5 12.44V9.75H1V15h5.25v-1.5H3.56l3.72-3.72zm3.56 0L8.72 9.78l3.72 3.72H9.75V15H15V9.75h-1.5v2.69z"></path>
+                </svg>
+            </button>
+        </div>
         <div class="map-container" x-ref="map"></div>
     </section>
 </div>

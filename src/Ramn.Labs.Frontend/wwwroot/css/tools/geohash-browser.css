@@ -1,0 +1,208 @@
+.browser-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.browser-grid > .map-card {
+  order: 1;
+}
+
+.browser-grid > .controls-panel {
+  order: 2;
+}
+
+@media (min-width: 1200px) {
+  .browser-grid {
+    grid-template-columns: minmax(0, 1fr) 26rem;
+  }
+}
+
+.map-card {
+  min-height: 60vh;
+  display: flex;
+  position: relative;
+}
+
+.map-container {
+  width: 100%;
+  min-height: 60vh;
+}
+
+.map-canvas-actions {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 700;
+}
+
+.map-maximize-button {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--bs-border-color);
+  box-shadow: 0 0.2rem 0.75rem rgba(0, 0, 0, 0.2);
+}
+
+.map-maximize-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+.browser-grid.map-maximized {
+  position: fixed;
+  top: var(--map-maximized-top, 0);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1100;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) min(32rem, 42vw);
+  background: var(--bs-body-bg);
+  margin: 0;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: stretch;
+}
+
+.browser-grid.map-maximized .map-card {
+  position: relative;
+  border-radius: 0;
+  margin: 0;
+  min-height: 0;
+}
+
+.browser-grid.map-maximized .map-container {
+  height: 100%;
+  min-height: 100%;
+  border-radius: 0;
+  border: 0;
+}
+
+.browser-grid.map-maximized .controls-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  margin: 0;
+  box-shadow: 0 0.9rem 2rem rgba(0, 0, 0, 0.25);
+}
+
+@media (max-width: 991.98px) {
+  .browser-grid.map-maximized {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(40vh, 1fr) auto;
+  }
+
+  .browser-grid.map-maximized .map-card {
+    min-height: 40vh;
+  }
+
+  .browser-grid.map-maximized .controls-panel {
+    max-height: 45vh;
+  }
+}
+
+.status-list > div + div {
+  margin-top: 0.25rem;
+}
+
+.geohash-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.geohash-readout-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(13, 110, 253, 0.2);
+  border-radius: 0.5rem;
+  background: rgba(13, 110, 253, 0.03);
+}
+
+.geohash-readout-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bs-secondary-color);
+  margin-bottom: 0.2rem;
+}
+
+.geohash-readout-value {
+  font-size: clamp(1.15rem, 2.2vw, 1.45rem);
+  line-height: 1.15;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  word-break: break-all;
+}
+
+.geohash-readout-value-compact {
+  font-size: clamp(0.78rem, 1.25vw, 0.92rem);
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.geohash-copy-icon {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.geohash-copy-icon svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+[data-bs-theme="dark"] .geohash-readout-row {
+  border-color: rgba(108, 117, 125, 0.45);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.geohash-cell-label {
+  background: transparent;
+  border: 0;
+}
+
+.geohash-cell-label span {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: #111;
+  background-color: transparent;
+  border: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95),
+    0 -1px 0 rgba(255, 255, 255, 0.95),
+    1px 0 0 rgba(255, 255, 255, 0.95),
+    -1px 0 0 rgba(255, 255, 255, 0.95);
+}
+
+[data-bs-theme="dark"] .geohash-cell-label span {
+  color: #fff;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.95),
+    0 -1px 0 rgba(0, 0, 0, 0.95),
+    1px 0 0 rgba(0, 0, 0, 0.95),
+    -1px 0 0 rgba(0, 0, 0, 0.95);
+}

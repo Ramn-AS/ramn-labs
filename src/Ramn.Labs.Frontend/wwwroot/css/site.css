@@ -21,6 +21,10 @@ body {
   margin-bottom: 60px;
 }
 
+body.map-fullscreen-active {
+  overflow: hidden;
+}
+
 #appToastContainer {
   z-index: 1200;
 }

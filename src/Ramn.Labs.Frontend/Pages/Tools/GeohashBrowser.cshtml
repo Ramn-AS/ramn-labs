@@ -1,0 +1,188 @@
+@page
+@model Ramn.Labs.Frontend.Pages.Tools.GeohashBrowserModel
+@{
+    ViewData["Title"] = "Geohash Browser";
+}
+
+@section Styles {
+    <partial name="_LeafletMapStylesPartial" />
+    <link rel="stylesheet" href="~/_content/Ramn.Labs.Frontend/css/tools/geohash-browser.css" asp-append-version="true" />
+}
+
+<div x-data="geohashBrowserTool()"
+     class="browser-grid"
+     x-bind:class="{ 'map-maximized': mapMaximized }"
+     x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''">
+    <section class="card shadow-sm controls-panel">
+        <div class="card-body">
+            <h1 class="h4 mb-3">Geohash Browser</h1>
+            <p class="text-body-secondary small mb-3">Click the map to render the geohash hierarchy for that point from start precision down to precision 0.</p>
+
+            <div class="d-flex flex-wrap gap-3 mb-3">
+                <div class="form-check form-switch m-0">
+                    <input id="autoPrecision" class="form-check-input" type="checkbox" x-model="autoPrecisionEnabled" x-on:change="refreshFromLastClick()" />
+                    <label class="form-check-label" for="autoPrecision">Auto precision</label>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <label for="manualPrecision" class="small m-0 text-body-secondary">Manual precision</label>
+                    <input id="manualPrecision"
+                           type="number"
+                           class="form-control form-control-sm"
+                           min="1"
+                           max="12"
+                           style="width: 5.5rem;"
+                           x-model.number="manualPrecision"
+                           x-bind:disabled="autoPrecisionEnabled"
+                           x-on:change="refreshFromLastClick()" />
+                </div>
+
+                <div class="form-check form-switch m-0">
+                    <input id="showLabels" class="form-check-input" type="checkbox" x-model="showLabels" x-on:change="refreshFromLastClick()" />
+                    <label class="form-check-label" for="showLabels">Show labels</label>
+                </div>
+            </div>
+
+            <div class="manual-geohash-input mb-3">
+                <label for="manualGeohash" class="small m-0 text-body-secondary">Select by geohash</label>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                    <input id="manualGeohash"
+                           type="text"
+                           class="form-control form-control-sm font-monospace"
+                           maxlength="12"
+                           placeholder="e.g. u4pruydqqvj8"
+                           x-model.trim="manualGeohashInput"
+                           x-on:input.debounce.300ms="selectManualGeohashFromInput()"
+                           x-on:change="selectManualGeohashFromInput()" />
+                </div>
+                <div class="small text-danger mt-1" x-show="manualGeohashError" x-text="manualGeohashError"></div>
+            </div>
+
+            <div class="geohash-readout mb-3">
+                <div class="geohash-readout-row" x-show="hasSelectedPoint">
+                    <div>
+                        <div class="geohash-readout-label">Selected point geohash</div>
+                        <div class="geohash-readout-value" x-text="exactGeohash || '-'" title="Precision 12 geohash"></div>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary geohash-copy-icon"
+                            x-on:click="copyExactGeohash()"
+                            x-bind:disabled="!exactGeohash"
+                            title="Copy selected point geohash"
+                            aria-label="Copy selected point geohash">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 8.75A2.75 2.75 0 0 1 10.75 6h8.5A2.75 2.75 0 0 1 22 8.75v8.5A2.75 2.75 0 0 1 19.25 20h-8.5A2.75 2.75 0 0 1 8 17.25zm2.75-1.25c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25z"></path>
+                            <path d="M3.5 5.75A2.75 2.75 0 0 1 6.25 3h8.5a.75.75 0 0 1 0 1.5h-8.5C5.56 4.5 5 5.06 5 5.75v8.5a.75.75 0 0 1-1.5 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="geohash-readout-row" x-show="hasSelectedPoint">
+                    <div>
+                        <div class="geohash-readout-label">Point WKT</div>
+                        <div class="geohash-readout-value geohash-readout-value-compact" x-text="selectedPointWkt || '-'" title="WKT point"></div>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary geohash-copy-icon"
+                            x-on:click="copySelectedPointWkt()"
+                            x-bind:disabled="!selectedPointWkt"
+                            title="Copy point WKT"
+                            aria-label="Copy point WKT">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 8.75A2.75 2.75 0 0 1 10.75 6h8.5A2.75 2.75 0 0 1 22 8.75v8.5A2.75 2.75 0 0 1 19.25 20h-8.5A2.75 2.75 0 0 1 8 17.25zm2.75-1.25c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25z"></path>
+                            <path d="M3.5 5.75A2.75 2.75 0 0 1 6.25 3h8.5a.75.75 0 0 1 0 1.5h-8.5C5.56 4.5 5 5.06 5 5.75v8.5a.75.75 0 0 1-1.5 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="geohash-readout-row" x-show="hasSelectedPoint">
+                    <div>
+                        <div class="geohash-readout-label">Point lat/lon</div>
+                        <div class="geohash-readout-value geohash-readout-value-compact" x-text="selectedPointLatLon || '-'" title="Latitude, longitude"></div>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary geohash-copy-icon"
+                            x-on:click="copySelectedPointLatLon()"
+                            x-bind:disabled="!selectedPointLatLon"
+                            title="Copy point lat/lon"
+                            aria-label="Copy point lat/lon">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 8.75A2.75 2.75 0 0 1 10.75 6h8.5A2.75 2.75 0 0 1 22 8.75v8.5A2.75 2.75 0 0 1 19.25 20h-8.5A2.75 2.75 0 0 1 8 17.25zm2.75-1.25c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25z"></path>
+                            <path d="M3.5 5.75A2.75 2.75 0 0 1 6.25 3h8.5a.75.75 0 0 1 0 1.5h-8.5C5.56 4.5 5 5.06 5 5.75v8.5a.75.75 0 0 1-1.5 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="geohash-readout-row">
+                    <div>
+                        <div class="geohash-readout-label">Selected cell geohash</div>
+                        <div class="geohash-readout-value" x-text="selectedCellGeohash || '-'" title="Current highlighted cell geohash"></div>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary geohash-copy-icon"
+                            x-on:click="copySelectedCellGeohash()"
+                            x-bind:disabled="!selectedCellGeohash"
+                            title="Copy selected cell geohash"
+                            aria-label="Copy selected cell geohash">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 8.75A2.75 2.75 0 0 1 10.75 6h8.5A2.75 2.75 0 0 1 22 8.75v8.5A2.75 2.75 0 0 1 19.25 20h-8.5A2.75 2.75 0 0 1 8 17.25zm2.75-1.25c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25z"></path>
+                            <path d="M3.5 5.75A2.75 2.75 0 0 1 6.25 3h8.5a.75.75 0 0 1 0 1.5h-8.5C5.56 4.5 5 5.06 5 5.75v8.5a.75.75 0 0 1-1.5 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="geohash-readout-row">
+                    <div>
+                        <div class="geohash-readout-label">Selected cell bbox WKT</div>
+                        <div class="geohash-readout-value geohash-readout-value-compact" x-text="selectedCellBoundsWkt || '-'" title="Bounding box WKT polygon"></div>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary geohash-copy-icon"
+                            x-on:click="copySelectedCellBoundsWkt()"
+                            x-bind:disabled="!selectedCellBoundsWkt"
+                            title="Copy selected cell bbox WKT"
+                            aria-label="Copy selected cell bbox WKT">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="M8 8.75A2.75 2.75 0 0 1 10.75 6h8.5A2.75 2.75 0 0 1 22 8.75v8.5A2.75 2.75 0 0 1 19.25 20h-8.5A2.75 2.75 0 0 1 8 17.25zm2.75-1.25c-.69 0-1.25.56-1.25 1.25v8.5c0 .69.56 1.25 1.25 1.25h8.5c.69 0 1.25-.56 1.25-1.25v-8.5c0-.69-.56-1.25-1.25-1.25z"></path>
+                            <path d="M3.5 5.75A2.75 2.75 0 0 1 6.25 3h8.5a.75.75 0 0 1 0 1.5h-8.5C5.56 4.5 5 5.06 5 5.75v8.5a.75.75 0 0 1-1.5 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="small status-list">
+                <div><strong>Zoom:</strong> <span x-text="zoom"></span></div>
+                <div><strong>Start precision:</strong> <span x-text="effectiveStartPrecision"></span> <span class="text-body-secondary" x-text="autoPrecisionEnabled ? '(auto)' : '(manual)'"></span></div>
+                <div><strong>Rendered levels:</strong> <span x-text="renderedLevelCount"></span></div>
+                <div class="text-warning mt-2" x-show="renderWarning" x-text="renderWarning"></div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <button type="button" class="btn btn-outline-secondary" x-on:click="clearRendered()" x-bind:disabled="renderedLevelCount === 0">Clear map</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm overflow-hidden map-card">
+        <div class="map-canvas-actions">
+            <button type="button"
+                    class="btn btn-sm btn-light map-maximize-button"
+                    x-on:click="toggleMapMaximized()"
+                    x-bind:title="mapMaximized ? 'Restore map' : 'Maximize map'"
+                    x-bind:aria-label="mapMaximized ? 'Restore map' : 'Maximize map'">
+                <svg x-show="!mapMaximized" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M1 1h6v1.5H3.56L7.22 6.16 6.16 7.22 2.5 3.56V7H1zm14 0v6h-1.5V3.56l-3.66 3.66-1.06-1.06 3.66-3.66H9V1zm0 14H9v-1.5h3.44l-3.66-3.66 1.06-1.06 3.66 3.66V9H15zM1 15V9h1.5v3.44l3.66-3.66 1.06 1.06-3.66 3.66H7V15z"></path>
+                </svg>
+                <svg x-show="mapMaximized" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M6.25 1H1v5.25h1.5V3.56L6.22 7.3l1.06-1.06L3.56 2.5h2.69zm3.5 0v1.5h2.69L8.72 6.22 9.78 7.3l3.72-3.74v2.69H15V1zM6.22 8.72 2.5 12.44V9.75H1V15h5.25v-1.5H3.56l3.72-3.72zm3.56 0L8.72 9.78l3.72 3.72H9.75V15H15V9.75h-1.5v2.69z"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="map-container" x-ref="map"></div>
+    </section>
+</div>
+
+@section Scripts {
+    <partial name="_LeafletMapScriptsPartial" />
+    <script src="~/_content/Ramn.Labs.Frontend/js/tools/geohash-browser.js" asp-append-version="true"></script>
+}

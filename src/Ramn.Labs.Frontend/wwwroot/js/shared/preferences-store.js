@@ -1,5 +1,6 @@
 (() => {
     const themeStorageKey = "ramnlabs.georaptor.theme";
+    const mapMaximizedStorageKey = "ramnlabs.maps.maximized";
     const defaultTheme = "system";
 
     function safeRead(key) {
@@ -44,12 +45,23 @@
         return applyTheme(theme);
     }
 
+    function getMapMaximizedPreference() {
+        return safeRead(mapMaximizedStorageKey) === "1";
+    }
+
+    function setMapMaximizedPreference(isMaximized) {
+        safeWrite(mapMaximizedStorageKey, isMaximized ? "1" : "0");
+    }
+
     window.preferencesStore = {
         themeStorageKey,
+        mapMaximizedStorageKey,
         defaultTheme,
         getTheme,
         setTheme,
         applyTheme,
-        resolveAppliedTheme
+        resolveAppliedTheme,
+        getMapMaximizedPreference,
+        setMapMaximizedPreference
     };
 })();

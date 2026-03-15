@@ -1,13 +1,11 @@
 document.addEventListener("alpine:init", () => {
     const tools = window.ramnLabsTools;
+    const preferencesStore = window.preferencesStore;
     if (!tools) {
         return;
     }
 
     const statusCodes = tools.statusCodes;
-
-    const geohashBase32 = "0123456789bcdefghjkmnpqrstuvwxyz";
-    const geohashBits = [16, 8, 4, 2, 1];
 
     function normalizeWktInput(value) {
         if (typeof value !== "string") {
@@ -79,53 +77,6 @@ document.addEventListener("alpine:init", () => {
         return `POLYGON (${ringText.join(", ")})`;
     }
 
-    function decodeGeohashBounds(geohash) {
-        if (typeof geohash !== "string" || geohash.trim().length === 0) {
-            return null;
-        }
-
-        let evenBit = true;
-        const latRange = [-90.0, 90.0];
-        const lonRange = [-180.0, 180.0];
-
-        for (const char of geohash.trim().toLowerCase()) {
-            const charIndex = geohashBase32.indexOf(char);
-            if (charIndex < 0) {
-                return null;
-            }
-
-            for (const bit of geohashBits) {
-                if (evenBit) {
-                    const midpoint = (lonRange[0] + lonRange[1]) / 2;
-                    if ((charIndex & bit) !== 0) {
-                        lonRange[0] = midpoint;
-                    }
-                    else {
-                        lonRange[1] = midpoint;
-                    }
-                }
-                else {
-                    const midpoint = (latRange[0] + latRange[1]) / 2;
-                    if ((charIndex & bit) !== 0) {
-                        latRange[0] = midpoint;
-                    }
-                    else {
-                        latRange[1] = midpoint;
-                    }
-                }
-
-                evenBit = !evenBit;
-            }
-        }
-
-        return {
-            minLat: latRange[0],
-            maxLat: latRange[1],
-            minLon: lonRange[0],
-            maxLon: lonRange[1]
-        };
-    }
-
     Alpine.data("polyhasherTool", () => ({
         wktInput: "",
         precision: 5,
@@ -153,12 +104,32 @@ document.addEventListener("alpine:init", () => {
         geohashLayer: null,
         drawLayer: null,
         drawControl: null,
+        mapMaximized: false,
+        maximizedTopOffset: 0,
+        resizeHandler: null,
 
         init() {
             this.pollController = tools.createPollingController({
                 getDelaySeconds: () => this.pollAfterSeconds,
                 poll: () => this.pollStatus()
             });
+
+            this.mapMaximized = preferencesStore && typeof preferencesStore.getMapMaximizedPreference === "function"
+                ? preferencesStore.getMapMaximizedPreference()
+                : false;
+            if (this.mapMaximized) {
+                this.updateMapMaximizedOffset();
+                document.body.classList.add("map-fullscreen-active");
+            }
+
+            this.resizeHandler = () => {
+                if (this.mapMaximized) {
+                    this.updateMapMaximizedOffset();
+                }
+
+                this.ensureMapSize();
+            };
+            window.addEventListener("resize", this.resizeHandler);
 
             window.requestAnimationFrame(() => {
                 this.initializeMap();
@@ -280,6 +251,30 @@ document.addEventListener("alpine:init", () => {
             this.mapThemeController.ensureMapSize();
         },
 
+        updateMapMaximizedOffset() {
+            const navbar = document.querySelector("header .navbar");
+            this.maximizedTopOffset = navbar ? Math.max(0, Math.ceil(navbar.getBoundingClientRect().bottom)) : 0;
+        },
+
+        toggleMapMaximized() {
+            this.mapMaximized = !this.mapMaximized;
+            if (preferencesStore && typeof preferencesStore.setMapMaximizedPreference === "function") {
+                preferencesStore.setMapMaximizedPreference(this.mapMaximized);
+            }
+
+            if (this.mapMaximized) {
+                this.updateMapMaximizedOffset();
+                document.body.classList.add("map-fullscreen-active");
+            }
+            else {
+                document.body.classList.remove("map-fullscreen-active");
+            }
+
+            this.$nextTick(() => {
+                this.ensureMapSize();
+            });
+        },
+
         useCartoBasemap() {
             if (!this.mapThemeController) {
                 return;
@@ -355,7 +350,7 @@ document.addEventListener("alpine:init", () => {
 
             let combinedBounds = null;
             for (const geohash of this.geohashes) {
-                const bounds = decodeGeohashBounds(geohash);
+                const bounds = tools.decodeGeohashBounds(geohash);
                 if (!bounds) {
                     continue;
                 }
@@ -575,6 +570,13 @@ document.addEventListener("alpine:init", () => {
 
         destroy() {
             this.stopPolling();
+
+            document.body.classList.remove("map-fullscreen-active");
+
+            if (this.resizeHandler) {
+                window.removeEventListener("resize", this.resizeHandler);
+                this.resizeHandler = null;
+            }
 
             if (this.mapThemeController) {
                 this.mapThemeController.dispose();
