@@ -32,15 +32,23 @@
             </div>
 
             <div class="row g-2 mb-3">
-                <div class="col-6">
+                <div class="col-md-4">
                     <label class="form-label" for="precision">Precision</label>
                     <input id="precision" type="number" class="form-control" min="1" max="12" x-model.number="precision" x-on:change="persistPreferences()" />
                 </div>
-                <div class="col-6">
+                <div class="col-md-4">
                     <label class="form-label" for="mode">Mode</label>
                     <select id="mode" class="form-select" x-model="mode" x-on:change="persistPreferences()">
                         <option value="intersects">Intersects</option>
                         <option value="contains">Contains</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="edgeHandling">Edge handling</label>
+                    <select id="edgeHandling" class="form-select" x-model="edgeHandling" x-on:change="persistPreferences()">
+                        <option value="web-mercator">Web Mercator</option>
+                        <option value="wgs84">WGS 84</option>
+                        <option value="geodesic">Geodesic</option>
                     </select>
                 </div>
             </div>

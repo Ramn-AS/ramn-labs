@@ -8,8 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="Geohash.GeoRaptor" Version="0.2.0" />
-    <PackageReference Include="Geohash.Polyhasher" Version="0.1.0" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
+    <PackageReference Include="Geohash.Polyhasher" Version="0.2.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
   </ItemGroup>
 
   <ItemGroup>

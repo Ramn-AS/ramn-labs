@@ -5,6 +5,8 @@ document.addEventListener("alpine:init", () => {
         return;
     }
     const geohashBase32 = "0123456789bcdefghjkmnpqrstuvwxyz";
+    const autoPrecisionPreferenceKey = "ramnlabs.geohash-browser.auto-precision";
+    const showLabelsPreferenceKey = "ramnlabs.geohash-browser.show-labels";
 
     function formatCoordinate(value) {
         return Number(value).toFixed(6);
@@ -104,6 +106,21 @@ document.addEventListener("alpine:init", () => {
         resizeHandler: null,
 
         init() {
+            if (preferencesStore && typeof preferencesStore.getPreference === "function") {
+                this.autoPrecisionEnabled = preferencesStore.getPreference(autoPrecisionPreferenceKey, true);
+                this.showLabels = preferencesStore.getPreference(showLabelsPreferenceKey, true);
+            }
+
+            if (this.$watch && preferencesStore && typeof preferencesStore.setPreference === "function") {
+                this.$watch("autoPrecisionEnabled", (value) => {
+                    preferencesStore.setPreference(autoPrecisionPreferenceKey, Boolean(value));
+                });
+
+                this.$watch("showLabels", (value) => {
+                    preferencesStore.setPreference(showLabelsPreferenceKey, Boolean(value));
+                });
+            }
+
             this.mapMaximized = preferencesStore && typeof preferencesStore.getMapMaximizedPreference === "function"
                 ? preferencesStore.getMapMaximizedPreference()
                 : false;

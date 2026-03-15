@@ -86,6 +86,27 @@ public static class PolyHasherModeValues
 }
 
 /// <summary>
+/// Defines normalized PolyHasher edge-handling values used in requests.
+/// </summary>
+public static class PolyHasherEdgeHandlingValues
+{
+    /// <summary>
+    /// Uses planar geometry checks.
+    /// </summary>
+    public const string WGS84 = "wgs84";
+
+    /// <summary>
+    /// Densifies geometry edges before checks.
+    /// </summary>
+    public const string WebMercator = "web-mercator";
+
+    /// <summary>
+    /// Uses geodesic edge handling for polygonal geometries.
+    /// </summary>
+    public const string Geodesic = "geodesic";
+}
+
+/// <summary>
 /// Specialized queue contract for PolyHasher jobs.
 /// </summary>
 public interface IPolyHasherJobQueue : IBackgroundJobQueue<Guid>
@@ -183,6 +204,11 @@ public sealed class PolyHasherJobRecord : IBackgroundJobRecord<Guid>
     public string Mode { get; set; } = PolyHasherModeValues.Intersects;
 
     /// <summary>
+    /// Gets or sets selected PolyHasher edge handling value.
+    /// </summary>
+    public string EdgeHandling { get; set; } = PolyHasherEdgeHandlingValues.WebMercator;
+
+    /// <summary>
     /// Gets or sets whether result file should be gzip-compressed.
     /// </summary>
     public bool ZipBeforeDownload { get; set; }
@@ -242,6 +268,11 @@ public sealed class CreatePolyHasherJobRequest
     /// Gets or sets PolyHasher mode value.
     /// </summary>
     public string Mode { get; set; } = PolyHasherModeValues.Intersects;
+
+    /// <summary>
+    /// Gets or sets PolyHasher edge handling value.
+    /// </summary>
+    public string EdgeHandling { get; set; } = PolyHasherEdgeHandlingValues.WGS84;
 
     /// <summary>
     /// Gets or sets whether result file should be gzip-compressed.
@@ -373,9 +404,9 @@ public sealed class PolyHasherQueueStatusResponse
 public interface IPolyHasherService
 {
     /// <summary>
-    /// Converts WKT geometry to geohashes at requested precision and mode.
+    /// Converts WKT geometry to geohashes at requested precision, mode, and edge handling.
     /// </summary>
-    HashSet<string> Encode(string wkt, int precision, PolyhasherMode mode);
+    HashSet<string> Encode(string wkt, int precision, PolyhasherMode mode, EdgeHandling edgeHandling);
 }
 
 /// <summary>
@@ -387,7 +418,7 @@ public sealed class PolyHasherService : IPolyHasherService
     private readonly WKTReader _wktReader = new();
 
     /// <inheritdoc />
-    public HashSet<string> Encode(string wkt, int precision, PolyhasherMode mode)
+    public HashSet<string> Encode(string wkt, int precision, PolyhasherMode mode, EdgeHandling edgeHandling)
     {
         Geometry geometry;
         try
@@ -399,7 +430,7 @@ public sealed class PolyHasherService : IPolyHasherService
             throw new PolyHasherValidationException("invalid_wkt", $"Input WKT is invalid. {ex.Message}");
         }
 
-        return _polyhasher.Encode(geometry, precision, mode);
+        return _polyhasher.Encode(geometry, precision, mode, edgeHandling);
     }
 }
 
@@ -441,6 +472,23 @@ public static class PolyHasherRequestValidator
             _ => throw new PolyHasherValidationException(
                 "invalid_mode",
                 $"Mode must be '{PolyHasherModeValues.Intersects}' or '{PolyHasherModeValues.Contains}'.")
+        };
+    }
+
+    /// <summary>
+    /// Validates and normalizes edge handling value.
+    /// </summary>
+    public static EdgeHandling ValidateAndParseEdgeHandling(string? edgeHandling)
+    {
+        var normalized = (edgeHandling ?? PolyHasherEdgeHandlingValues.WGS84).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            PolyHasherEdgeHandlingValues.WGS84 => EdgeHandling.WGS84,
+            PolyHasherEdgeHandlingValues.WebMercator => EdgeHandling.WebMercator,
+            PolyHasherEdgeHandlingValues.Geodesic => EdgeHandling.Geodesic,
+            _ => throw new PolyHasherValidationException(
+                "invalid_edge_handling",
+                $"Edge handling must be '{PolyHasherEdgeHandlingValues.WGS84}', '{PolyHasherEdgeHandlingValues.WebMercator}', or '{PolyHasherEdgeHandlingValues.Geodesic}'.")
         };
     }
 
@@ -593,7 +641,8 @@ public sealed class PolyHasherWorker : BackgroundService
             var computeTask = Task.Run(() =>
             {
                 var parsedMode = PolyHasherRequestValidator.ValidateAndParseMode(job.Mode);
-                var output = _polyHasherService.Encode(job.WktInput ?? string.Empty, job.Precision, parsedMode);
+                var parsedEdgeHandling = PolyHasherRequestValidator.ValidateAndParseEdgeHandling(job.EdgeHandling);
+                var output = _polyHasherService.Encode(job.WktInput ?? string.Empty, job.Precision, parsedMode, parsedEdgeHandling);
 
                 if (output.Count > Math.Max(1, _options.MaxOutputGeohashCount))
                 {
@@ -807,6 +856,7 @@ public static class PolyHasherEndpoints
             string? wkt = null;
             int precision;
             string? mode = null;
+            string? edgeHandling = null;
             var zipBeforeDownload = false;
 
             if (httpContext.Request.HasFormContentType)
@@ -814,6 +864,7 @@ public static class PolyHasherEndpoints
                 var form = await httpContext.Request.ReadFormAsync(cancellationToken);
                 wkt = form["wkt"].FirstOrDefault();
                 mode = form["mode"].FirstOrDefault();
+                edgeHandling = form["edgeHandling"].FirstOrDefault();
 
                 var zipValue = form["zipBeforeDownload"].FirstOrDefault();
                 if (!string.IsNullOrWhiteSpace(zipValue))
@@ -840,6 +891,7 @@ public static class PolyHasherEndpoints
                 wkt = request.Wkt;
                 precision = request.Precision;
                 mode = request.Mode;
+                edgeHandling = request.EdgeHandling;
                 zipBeforeDownload = request.ZipBeforeDownload;
             }
 
@@ -847,7 +899,9 @@ public static class PolyHasherEndpoints
             var normalizedWkt = PolyHasherRequestValidator.ValidateAndNormalizeWkt(wkt, config);
             PolyHasherRequestValidator.ValidatePrecision(precision);
             _ = PolyHasherRequestValidator.ValidateAndParseMode(mode);
+            _ = PolyHasherRequestValidator.ValidateAndParseEdgeHandling(edgeHandling);
             var normalizedMode = (mode ?? PolyHasherModeValues.Intersects).Trim().ToLowerInvariant();
+            var normalizedEdgeHandling = (edgeHandling ?? PolyHasherEdgeHandlingValues.WGS84).Trim().ToLowerInvariant();
             var requestIpAddress = ResolveRequestIpAddress(httpContext);
 
             var existingActiveJob = store.GetAll().FirstOrDefault(x =>
@@ -883,6 +937,7 @@ public static class PolyHasherEndpoints
                 WktInput = normalizedWkt,
                 Precision = precision,
                 Mode = normalizedMode,
+                EdgeHandling = normalizedEdgeHandling,
                 ZipBeforeDownload = zipBeforeDownload
             };
 

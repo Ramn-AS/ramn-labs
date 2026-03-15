@@ -8,6 +8,7 @@ document.addEventListener("alpine:init", () => {
     const preferencesKeys = {
         precision: "ramnlabs.polyhasher.precision",
         mode: "ramnlabs.polyhasher.mode",
+        edgeHandling: "ramnlabs.polyhasher.edgeHandling",
         zipBeforeDownload: "ramnlabs.polyhasher.zipBeforeDownload"
     };
 
@@ -87,6 +88,7 @@ document.addEventListener("alpine:init", () => {
         wktInput: "",
         precision: 5,
         mode: "intersects",
+        edgeHandling: "web-mercator",
         zipBeforeDownload: true,
         jobId: null,
         status: null,
@@ -158,6 +160,11 @@ document.addEventListener("alpine:init", () => {
             const mode = preferencesStore.getPreference(preferencesKeys.mode, this.mode);
             this.mode = mode === "contains" ? "contains" : "intersects";
 
+            const edgeHandling = preferencesStore.getPreference(preferencesKeys.edgeHandling, this.edgeHandling);
+            this.edgeHandling = ["wgs84", "web-mercator", "geodesic"].includes(edgeHandling)
+                ? edgeHandling
+                : "wgs84";
+
             this.zipBeforeDownload = preferencesStore.getPreference(preferencesKeys.zipBeforeDownload, true) !== false;
         },
 
@@ -168,6 +175,7 @@ document.addEventListener("alpine:init", () => {
 
             preferencesStore.setPreference(preferencesKeys.precision, this.precision);
             preferencesStore.setPreference(preferencesKeys.mode, this.mode);
+            preferencesStore.setPreference(preferencesKeys.edgeHandling, this.edgeHandling);
             preferencesStore.setPreference(preferencesKeys.zipBeforeDownload, this.zipBeforeDownload);
         },
 
@@ -452,6 +460,7 @@ document.addEventListener("alpine:init", () => {
                     wkt: this.wktInput,
                     precision: this.precision,
                     mode: this.mode,
+                    edgeHandling: this.edgeHandling,
                     zipBeforeDownload: this.zipBeforeDownload
                 };
 
