@@ -1,0 +1,35 @@
+name: Ramn.Labs CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  DOCKER_USER: ${{secrets.DOCKER_USER}}
+  DOCKER_TOKEN: ${{secrets.DOCKER_TOKEN}}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set current date as env variable
+      run: echo "TAGPLZ=$(date +'%Y%m%d.%H%M%S')" >> $GITHUB_ENV
+      
+    - uses: actions/checkout@v4
+    
+    - name: Build the Docker image
+      run: docker build -f ./src/Ramn.Labs.Backend/Dockerfile ./src -t andrerav/ramn-labs:$TAGPLZ -t andrerav/ramn-labs:latest
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USER }}
+        password: ${{ secrets.DOCKER_TOKEN }}
+        
+    - name: Push the Docker image (versioned tag)
+      run: docker push andrerav/ramn-labs:$TAGPLZ
+      
+    - name: Push the Docker image (latest)
+      run: docker push andrerav/ramn-labs:latest
