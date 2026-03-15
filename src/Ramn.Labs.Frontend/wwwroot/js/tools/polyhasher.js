@@ -1,12 +1,10 @@
 document.addEventListener("alpine:init", () => {
-    const statusCodes = {
-        queued: 0,
-        running: 1,
-        completed: 2,
-        failed: 3,
-        timedOut: 4,
-        dropped: 5
-    };
+    const tools = window.ramnLabsTools;
+    if (!tools) {
+        return;
+    }
+
+    const statusCodes = tools.statusCodes;
 
     const geohashBase32 = "0123456789bcdefghjkmnpqrstuvwxyz";
     const geohashBits = [16, 8, 4, 2, 1];
@@ -148,27 +146,24 @@ document.addEventListener("alpine:init", () => {
         downloadSizeBytes: null,
         isSubmitting: false,
         completedToastShownForJobId: null,
-        pollTimer: null,
+        pollController: null,
         map: null,
-        baseLayer: null,
+        mapThemeController: null,
         inputGeometryLayer: null,
         geohashLayer: null,
         drawLayer: null,
         drawControl: null,
-        themeObserver: null,
-        resizeHandler: null,
 
         init() {
+            this.pollController = tools.createPollingController({
+                getDelaySeconds: () => this.pollAfterSeconds,
+                poll: () => this.pollStatus()
+            });
+
             window.requestAnimationFrame(() => {
                 this.initializeMap();
                 this.ensureMapSize();
                 this.updateInputGeometryPreview(false);
-
-                this.resizeHandler = () => {
-                    this.ensureMapSize();
-                };
-
-                window.addEventListener("resize", this.resizeHandler);
             });
         },
 
@@ -184,7 +179,8 @@ document.addEventListener("alpine:init", () => {
             });
 
             this.map.setView([55, 12], 5);
-            this.baseLayer = this.createCartoLayer(this.getAppliedTheme()).addTo(this.map);
+            this.mapThemeController = tools.createLeafletThemeController(this.map);
+            this.mapThemeController.init();
 
             this.inputGeometryLayer = L.geoJSON([], {
                 style: {
@@ -200,14 +196,6 @@ document.addEventListener("alpine:init", () => {
             this.drawLayer = new L.FeatureGroup().addTo(this.map);
 
             this.configureDrawingTools();
-
-            this.themeObserver = new MutationObserver(() => {
-                this.updateBasemapForTheme();
-            });
-            this.themeObserver.observe(document.documentElement, {
-                attributes: true,
-                attributeFilter: ["data-bs-theme"]
-            });
         },
 
         configureDrawingTools() {
@@ -285,42 +273,19 @@ document.addEventListener("alpine:init", () => {
         },
 
         ensureMapSize() {
-            if (!this.map) {
+            if (!this.mapThemeController) {
                 return;
             }
 
-            this.map.invalidateSize();
-        },
-
-        getAppliedTheme() {
-            const value = document.documentElement.getAttribute("data-bs-theme");
-            return value === "dark" ? "dark" : "light";
-        },
-
-        createCartoLayer(theme) {
-            const styleName = theme === "dark" ? "dark_all" : "light_all";
-            return L.tileLayer(`https://a.basemaps.cartocdn.com/${styleName}/{z}/{x}/{y}.png`, {
-                attribution: '&copy; <a href="https://carto.com">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
-                maxZoom: 20
-            });
-        },
-
-        createOsmLayer() {
-            return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
-                maxZoom: 20
-            });
+            this.mapThemeController.ensureMapSize();
         },
 
         useCartoBasemap() {
-            if (!this.baseLayer || !this.map) {
+            if (!this.mapThemeController) {
                 return;
             }
 
-            this.map.removeLayer(this.baseLayer);
-            this.baseLayer = this.createCartoLayer(this.getAppliedTheme());
-            this.baseLayer.addTo(this.map);
-            this.ensureMapSize();
+            this.mapThemeController.useCartoBasemap();
         },
 
         updateBasemapForTheme() {
@@ -328,38 +293,11 @@ document.addEventListener("alpine:init", () => {
         },
 
         formatDuration(milliseconds) {
-            if (!Number.isFinite(milliseconds) || milliseconds < 0) {
-                return "-";
-            }
-
-            if (milliseconds < 1000) {
-                return `${Math.round(milliseconds)} ms`;
-            }
-
-            const seconds = milliseconds / 1000;
-            if (seconds < 60) {
-                return `${seconds.toFixed(2)} s`;
-            }
-
-            const minutes = Math.floor(seconds / 60);
-            const remainingSeconds = seconds - (minutes * 60);
-            return `${minutes}m ${remainingSeconds.toFixed(1)}s`;
+            return tools.formatDuration(milliseconds);
         },
 
         formatBytes(bytes) {
-            if (!Number.isFinite(bytes) || bytes < 0) {
-                return "-";
-            }
-
-            if (bytes < 1024) {
-                return `${bytes} B`;
-            }
-
-            if (bytes < (1024 * 1024)) {
-                return `${(bytes / 1024).toFixed(1)} KB`;
-            }
-
-            return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+            return tools.formatBytes(bytes);
         },
 
         updateInputGeometryPreview(fitBounds) {
@@ -450,77 +388,15 @@ document.addEventListener("alpine:init", () => {
         },
 
         toStatusCode(status) {
-            if (Number.isInteger(status)) {
-                return status;
-            }
-
-            if (typeof status !== "string") {
-                return null;
-            }
-
-            const normalized = status.trim().toLowerCase();
-            if (normalized === "queued") {
-                return statusCodes.queued;
-            }
-
-            if (normalized === "running") {
-                return statusCodes.running;
-            }
-
-            if (normalized === "completed") {
-                return statusCodes.completed;
-            }
-
-            if (normalized === "failed") {
-                return statusCodes.failed;
-            }
-
-            if (normalized === "timedout" || normalized === "timed_out" || normalized === "timed out") {
-                return statusCodes.timedOut;
-            }
-
-            if (normalized === "dropped") {
-                return statusCodes.dropped;
-            }
-
-            return null;
+            return tools.toStatusCode(status);
         },
 
         getStatusLabel(statusCode, fallback) {
-            if (statusCode === statusCodes.queued) {
-                return "Queued";
-            }
-
-            if (statusCode === statusCodes.running) {
-                return "Running";
-            }
-
-            if (statusCode === statusCodes.completed) {
-                return "Completed";
-            }
-
-            if (statusCode === statusCodes.failed) {
-                return "Failed";
-            }
-
-            if (statusCode === statusCodes.timedOut) {
-                return "TimedOut";
-            }
-
-            if (statusCode === statusCodes.dropped) {
-                return "Dropped";
-            }
-
-            return typeof fallback === "string" ? fallback : "Unknown";
+            return tools.getStatusLabel(statusCode, fallback);
         },
 
         isSubmissionLocked() {
-            if (!this.jobId) {
-                return false;
-            }
-
-            const statusCode = this.toStatusCode(this.status);
-            return statusCode === statusCodes.queued || statusCode === statusCodes.running;
+            return tools.isSubmissionLocked(this.jobId, this.status);
         },
 
         async submitJob() {
@@ -577,18 +453,19 @@ document.addEventListener("alpine:init", () => {
         },
 
         startPolling() {
-            this.stopPolling();
-            this.pollTimer = window.setInterval(() => {
-                this.pollStatus();
-            }, Math.max(1, this.pollAfterSeconds) * 1000);
-            this.pollStatus();
+            if (!this.pollController) {
+                return;
+            }
+
+            this.pollController.start();
         },
 
         stopPolling() {
-            if (this.pollTimer) {
-                window.clearInterval(this.pollTimer);
-                this.pollTimer = null;
+            if (!this.pollController) {
+                return;
             }
+
+            this.pollController.stop();
         },
 
         async pollStatus() {
@@ -653,17 +530,11 @@ document.addEventListener("alpine:init", () => {
         },
 
         isConnectivityError(err) {
-            if (!err || typeof err !== "object") {
-                return false;
-            }
-
-            return err.name === "TypeError";
+            return tools.isConnectivityError(err);
         },
 
         notifyBackendConnectionError() {
-            if (window.appNotifications && typeof window.appNotifications.backendConnectionError === "function") {
-                window.appNotifications.backendConnectionError();
-            }
+            tools.notifyBackendConnectionError();
         },
 
         notifyCompletionToast() {
@@ -672,9 +543,7 @@ document.addEventListener("alpine:init", () => {
             }
 
             this.completedToastShownForJobId = this.jobId;
-            if (window.appNotifications && typeof window.appNotifications.success === "function") {
-                window.appNotifications.success("Polyhash complete", "Your polyhash job finished successfully.");
-            }
+            tools.notifySuccess("Polyhash complete", "Your polyhash job finished successfully.");
         },
 
         clearAll() {
@@ -707,14 +576,9 @@ document.addEventListener("alpine:init", () => {
         destroy() {
             this.stopPolling();
 
-            if (this.resizeHandler) {
-                window.removeEventListener("resize", this.resizeHandler);
-                this.resizeHandler = null;
-            }
-
-            if (this.themeObserver) {
-                this.themeObserver.disconnect();
-                this.themeObserver = null;
+            if (this.mapThemeController) {
+                this.mapThemeController.dispose();
+                this.mapThemeController = null;
             }
 
             if (this.map) {
