@@ -1,9 +1,43 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 <head>
+    @{
+        var siteName = "Ramn Labs";
+        var pageTitle = ViewData["Title"] as string;
+        var titleText = string.IsNullOrWhiteSpace(pageTitle) ? siteName : $"{pageTitle} | {siteName}";
+        var descriptionText = ViewData["Description"] as string
+            ?? "Interactive geohash and map utilities: browse geohashes, encode polygons, and compress geohash sets.";
+        var request = Context?.Request;
+        var canonicalPath = ViewData["CanonicalPath"] as string ?? request?.Path.Value ?? "/";
+        var canonicalUrl = request is null
+            ? canonicalPath
+            : $"{request.Scheme}://{request.Host}{canonicalPath}";
+        var socialImagePath = ViewData["SocialImagePath"] as string;
+        var socialImageUrl = string.IsNullOrWhiteSpace(socialImagePath) || request is null
+            ? null
+            : $"{request.Scheme}://{request.Host}{socialImagePath}";
+    }
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Ramn.Labs.Frontend</title>
+    <title>@titleText</title>
+    <meta name="description" content="@descriptionText" />
+    <link rel="canonical" href="@canonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="@siteName" />
+    <meta property="og:title" content="@titleText" />
+    <meta property="og:description" content="@descriptionText" />
+    <meta property="og:url" content="@canonicalUrl" />
+    @if (!string.IsNullOrWhiteSpace(socialImageUrl))
+    {
+        <meta property="og:image" content="@socialImageUrl" />
+    }
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="@titleText" />
+    <meta name="twitter:description" content="@descriptionText" />
+    @if (!string.IsNullOrWhiteSpace(socialImageUrl))
+    {
+        <meta name="twitter:image" content="@socialImageUrl" />
+    }
     <script>
         (function () {
             var key = "ramnlabs.georaptor.theme";

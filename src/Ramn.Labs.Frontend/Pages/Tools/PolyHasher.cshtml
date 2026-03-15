@@ -1,7 +1,9 @@
 @page
 @model Ramn.Labs.Frontend.Pages.Tools.PolyHasherModel
 @{
-    ViewData["Title"] = "PolyHasher Tool";
+    ViewData["Title"] = "Polygon to Geohash Encoder (PolyHasher)";
+    ViewData["Description"] = "Convert POLYGON and MULTIPOLYGON WKT into geohash sets with configurable precision and mode, preview results on map, and download output files.";
+    ViewData["SocialImagePath"] = "/_content/Ramn.Labs.Frontend/images/tools/polyhasher-preview.jpg";
 }
 
 @section Styles {
@@ -79,11 +81,8 @@
                  hx-trigger="load, every 2s"
                  hx-swap="innerHTML">Loading queue status...</div>
             <hr class="my-3" />
-
-
+            <em>This tool uses <a href="https://github.com/andrerav/Geohash.Polyhasher">Geohash.Polyhasher</a> for computing geohashes from a polygon. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.Polyhasher/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.Polyhasher">Github</a>.</em>
         </div>
-        <hr class="my-3" />
-        <em>This tool uses <a href="https://github.com/andrerav/Geohash.Polyhasher">Geohash.Polyhasher</a> for computing geohashes from a polygon. Prebuilt packages are available on <a href="https://www.nuget.org/packages/Geohash.Polyhasher/">NuGet</a>, and you can get the source code on <a href="https://github.com/andrerav/Geohash.Polyhasher">Github</a>.</em>
     </section>
 
     <section class="card shadow-sm overflow-hidden map-card">

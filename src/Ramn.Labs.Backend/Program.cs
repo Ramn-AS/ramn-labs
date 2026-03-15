@@ -3,6 +3,7 @@ using Ramn.Labs.Backend.Features.Compression;
 using Ramn.Labs.Backend.Features.Jobs;
 using Ramn.Labs.Backend.Features.PolyHasher;
 using Microsoft.Extensions.Options;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,43 @@ app.UseAuthorization();
 app.MapStaticAssets();
 app.MapRazorPages()
     .WithStaticAssets();
+
+app.MapGet("/robots.txt", (HttpRequest request) =>
+{
+    var host = $"{request.Scheme}://{request.Host}";
+    var content = $"""
+User-agent: *
+Allow: /
+
+Sitemap: {host}/sitemap.xml
+""";
+
+    return Results.Text(content, "text/plain", Encoding.UTF8);
+});
+
+app.MapGet("/sitemap.xml", (HttpRequest request) =>
+{
+    var host = $"{request.Scheme}://{request.Host}";
+    var pages = new[]
+    {
+        "/",
+        "/About",
+        "/Tools/GeohashBrowser",
+        "/Tools/PolyHasher",
+        "/Tools/GeoRaptor"
+    };
+
+    var urlsetEntries = string.Join(Environment.NewLine, pages.Select(page =>
+        $"  <url><loc>{host}{page}</loc></url>"));
+    var xml = $"""
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{urlsetEntries}
+</urlset>
+""";
+
+    return Results.Text(xml, "application/xml", Encoding.UTF8);
+});
 
 app.MapCompressionEndpoints();
 app.MapPolyHasherEndpoints();
