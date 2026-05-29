@@ -25,6 +25,11 @@ body {
   --site-footer-height: 60px;
 }
 
+header {
+  position: relative;
+  z-index: 1250;
+}
+
 .site-content {
   flex: 1 0 auto;
   width: 100%;
@@ -96,6 +101,11 @@ body.map-fullscreen-active {
   mask-image: url("../icons/tools/laser.svg");
 }
 
+.tool-nav-icon--searchlight {
+  -webkit-mask-image: url("../icons/tools/searchlight.svg");
+  mask-image: url("../icons/tools/searchlight.svg");
+}
+
 .tool-tile-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -162,4 +172,25 @@ body.map-fullscreen-active {
 
 .tool-tile-body {
   padding: 1rem 1rem 1.1rem;
+}
+
+.map-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.map-action-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 0.95rem;
+}
+
+.map-action-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }

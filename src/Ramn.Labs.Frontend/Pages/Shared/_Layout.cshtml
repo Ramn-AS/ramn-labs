@@ -82,15 +82,15 @@
 </head>
 <body x-data="themeController()" x-init="init()">
     <header>
-        <nav class="navbar navbar-expand-sm border-bottom mb-3">
+        <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom mb-3">
             <div class="container-fluid px-3 px-lg-4">
                 <a class="navbar-brand" asp-area="" asp-page="/Index">Ramn Labs</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbarCollapse" aria-controls="mainNavbarCollapse"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-end align-items-center gap-2">
-                    <ul class="navbar-nav ms-auto align-items-sm-center">
+                <div class="collapse navbar-collapse" id="mainNavbarCollapse">
+                    <ul class="navbar-nav mx-lg-auto align-items-lg-center">
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Index">Home</a>
                         </li>
@@ -119,10 +119,16 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link nav-tool-link" asp-area="" asp-page="/Tools/Searchlight">
+                                <span class="tool-nav-icon tool-nav-icon--searchlight" aria-hidden="true"></span>
+                                <span>Searchlight Lux</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/About">About</a>
                         </li>
                     </ul>
-                    <div class="d-flex align-items-center gap-2 ms-sm-2">
+                    <div class="d-flex align-items-center gap-2 ms-lg-auto mt-2 mt-lg-0">
                         <label for="themeMode" class="small text-body-secondary m-0">Theme</label>
                         <select id="themeMode" class="form-select form-select-sm" style="width: auto;" x-model="theme" x-on:change="apply()">
                             <option value="system">System</option>

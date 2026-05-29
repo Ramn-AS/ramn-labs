@@ -1,0 +1,300 @@
+@page
+@model Ramn.Labs.Frontend.Pages.Tools.SearchlightModel
+@{
+    ViewData["Title"] = "Searchlight Illumination Tool";
+    ViewData["Description"] = "Estimate searchlight lux at target distance with optical zoom, spill modeling, and atmospheric attenuation.";
+}
+
+@section Styles {
+    <partial name="_OpenLayersMapStylesPartial" />
+    <link rel="stylesheet" href="~/_content/Ramn.Labs.Frontend/css/tools/searchlight.css" asp-append-version="true" />
+}
+
+<div x-data="searchlightTool()"
+     class="tool-grid"
+     x-bind:class="{ 'map-maximized': mapMaximized }"
+     x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''"
+     x-on:keydown.escape.window="closeMapActionMenu()">
+    <section class="card shadow-sm controls-panel">
+        <div class="card-body">
+            <h1 class="h4 mb-3">Searchlight Illumination</h1>
+            <p class="text-body-secondary small mb-3">Drag map markers to set source and target. The tool estimates target illuminance in lux using beam geometry, optical zoom, spill profile, and atmospheric attenuation.</p>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Source settings</h2>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="oneLuxDistanceM">1 lux distance (m)</label>
+                        <input id="oneLuxDistanceM" class="form-control" type="number" min="1" max="500000" step="1" x-model.number="spec.oneLuxDistanceM" x-on:change="refreshFromInputs(false)" />
+                        <div class="small text-body-secondary">Reference throw distance at spot focus and 100% dimming.</div>
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="dimmingPercent">Dimming: <span x-text="spec.dimmingPercent.toFixed(0) + '%'" ></span></label>
+                        <input id="dimmingPercent" class="form-range" type="range" min="0" max="100" step="1" x-model.number="spec.dimmingPercent" x-on:input="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 tool-field">
+                        <label class="form-label" for="cctK">Color temperature: <span x-text="spec.cctK.toFixed(0) + ' K'"></span></label>
+                        <input id="cctK"
+                               class="form-range searchlight-cct-range"
+                               type="range"
+                               min="1800"
+                               max="12000"
+                               step="100"
+                               x-model.number="spec.cctK"
+                               x-on:input="refreshFromInputs(false)"
+                               x-bind:style="'--cct-color:' + beamColorHex + '; accent-color:' + beamColorHex" />
+                        <div class="small text-body-secondary">
+                            <span x-text="beamColorDescription"></span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Beam settings</h2>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="lensDiameterCm">Beam diameter at lens (cm)</label>
+                        <input id="lensDiameterCm" class="form-control" type="number" min="0.1" max="500" step="0.1" x-model.number="spec.lensDiameterCm" x-on:change="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 tool-field">
+                        <div class="d-flex gap-3 flex-wrap">
+                            <div class="form-check">
+                                <input id="beamModeFixed" class="form-check-input" type="radio" value="fixed" x-model="spec.beamMode" x-on:change="refreshFromInputs(false)" />
+                                <label class="form-check-label" for="beamModeFixed">Fixed beam angle</label>
+                            </div>
+                            <div class="form-check">
+                                <input id="beamModeZoom" class="form-check-input" type="radio" value="zoom" x-model="spec.beamMode" x-on:change="refreshFromInputs(false)" />
+                                <label class="form-check-label" for="beamModeZoom">Optical zoom</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field" x-show="spec.beamMode === 'fixed'">
+                        <label class="form-label" for="fixedBeamAngleDeg">Fixed beam angle (deg)</label>
+                        <input id="fixedBeamAngleDeg" class="form-control" type="number" min="0.1" max="120" step="0.1" x-model.number="spec.fixedBeamAngleDeg" x-on:change="refreshFromInputs(false)" />
+                    </div>
+
+                    <template x-if="spec.beamMode === 'zoom'">
+                        <div class="col-12">
+                            <div class="row g-2">
+                                <div class="col-12 col-md-6 tool-field">
+                                    <label class="form-label" for="zoomMinBeamAngleDeg">Zoom min angle (spot, deg)</label>
+                                    <input id="zoomMinBeamAngleDeg" class="form-control" type="number" min="0.1" max="60" step="0.1" x-model.number="spec.zoomMinBeamAngleDeg" x-on:change="refreshFromInputs(false)" />
+                                </div>
+
+                                <div class="col-12 col-md-6 tool-field">
+                                    <label class="form-label" for="zoomMaxBeamAngleDeg">Zoom max angle (flood, deg)</label>
+                                    <input id="zoomMaxBeamAngleDeg" class="form-control" type="number" min="0.2" max="120" step="0.1" x-model.number="spec.zoomMaxBeamAngleDeg" x-on:change="refreshFromInputs(false)" />
+                                </div>
+
+                                <div class="col-12 tool-field">
+                                    <label class="form-label" for="zoomPercent">Zoom: <span x-text="spec.zoomPercent.toFixed(0) + '%'" ></span> <span class="text-body-secondary">(0=flood, 100=spot)</span></label>
+                                    <input id="zoomPercent" class="form-range" type="range" min="0" max="100" step="1" x-model.number="spec.zoomPercent" x-on:input="refreshFromInputs(false)" />
+                                </div>
+
+                                <div class="col-12 col-md-6 tool-field">
+                                    <label class="form-label" for="zoomOpticalEfficiency">Zoom optical efficiency</label>
+                                    <input id="zoomOpticalEfficiency" class="form-control" type="number" min="0.5" max="1" step="0.01" x-model.number="spec.zoomOpticalEfficiency" x-on:change="refreshFromInputs(false)" />
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </section>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Spill settings</h2>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="spillRatio">Spill intensity ratio: <span x-text="spec.spillRatio.toFixed(2)"></span></label>
+                        <input id="spillRatio" class="form-range" type="range" min="0" max="0.95" step="0.01" x-model.number="spec.spillRatio" x-on:input="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="spillFieldAngleDeg">Spill field angle (deg)</label>
+                        <input id="spillFieldAngleDeg" class="form-control" type="number" min="0.2" max="180" step="0.1" x-model.number="spec.spillFieldAngleDeg" x-on:change="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="spillSoftness">Spill softness: <span x-text="spec.spillSoftness.toFixed(2)"></span></label>
+                        <input id="spillSoftness" class="form-range" type="range" min="0.5" max="3" step="0.05" x-model.number="spec.spillSoftness" x-on:input="refreshFromInputs(false)" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Atmospheric settings</h2>
+                <div class="row g-2">
+                    <div class="col-12 tool-field">
+                        <div class="form-check form-switch mt-1">
+                            <input id="enableAtmosphericEffects"
+                                   class="form-check-input"
+                                   type="checkbox"
+                                   x-model="spec.enableAtmosphericEffects"
+                                   x-on:change="refreshFromInputs(false)" />
+                            <label class="form-check-label small" for="enableAtmosphericEffects">Enable atmospheric attenuation</label>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="atmosphericLossDbPerKmAt550">Loss at 550 nm (dB/km)</label>
+                        <input id="atmosphericLossDbPerKmAt550" class="form-control" type="number" min="0" max="1000" step="0.01" x-model.number="spec.atmosphericLossDbPerKmAt550" x-on:change="refreshFromInputs(false)" x-bind:disabled="!spec.enableAtmosphericEffects" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="atmosphericWavelengthExponent">Wavelength exponent</label>
+                        <input id="atmosphericWavelengthExponent" class="form-control" type="number" min="0" max="8" step="0.1" x-model.number="spec.atmosphericWavelengthExponent" x-on:change="refreshFromInputs(false)" x-bind:disabled="!spec.enableAtmosphericEffects" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Visualization settings</h2>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <div class="tool-field mb-2">
+                            <label class="form-label" for="visualExaggeration">Visual width exaggeration: <span x-text="spec.visualExaggeration.toFixed(1) + 'x'"></span></label>
+                            <input id="visualExaggeration" class="form-range" type="range" min="1" max="120" step="0.5" x-model.number="spec.visualExaggeration" x-on:input="refreshFromInputs(false)" />
+                        </div>
+
+                        <div class="tool-field mb-2">
+                            <label class="form-label" for="segmentsPer100m">Gradient density: <span x-text="spec.segmentsPer100m.toFixed(1)"></span> / 100 m</label>
+                            <input id="segmentsPer100m" class="form-range" type="range" min="0.2" max="20" step="0.2" x-model.number="spec.segmentsPer100m" x-on:input="refreshFromInputs(false)" />
+                        </div>
+
+                        <div class="tool-field">
+                            <div class="form-check form-switch mt-1">
+                                <input id="showSpillOverlay"
+                                       class="form-check-input"
+                                       type="checkbox"
+                                       x-model="spec.showSpillOverlay"
+                                       x-on:change="refreshFromInputs(false)" />
+                                <label class="form-check-label small" for="showSpillOverlay">Show spill overlay</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <div class="tool-field mb-2">
+                            <label class="form-label" for="visualSaturationLux">Visual saturation (lux)</label>
+                            <input id="visualSaturationLux" class="form-control" type="number" min="0.001" step="0.1" x-model.number="spec.visualSaturationLux" x-on:change="refreshFromInputs(false)" />
+                        </div>
+
+                        <div class="tool-field">
+                            <label class="form-label" for="cutoffLux">Cutoff (lux)</label>
+                            <input id="cutoffLux" class="form-control" type="number" min="0.0001" step="0.01" x-model.number="spec.cutoffLux" x-on:change="refreshFromInputs(false)" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-outline-secondary" x-on:click="centerOnOrigin()">Center on source</button>
+                <button type="button" class="btn btn-outline-secondary" x-on:click="fitToPoints()">Fit bounds</button>
+                <button type="button" class="btn btn-primary" x-on:click="resetDemo()">Reset defaults</button>
+            </div>
+
+            <section class="settings-section metrics-section floating-pane"
+                     x-ref="paneCalculated"
+                     x-bind:class="{ 'floating-pane-undocked': paneState.calculated.undocked }"
+                     x-bind:style="getPaneStyle('calculated')">
+                <div class="pane-header" x-on:mousedown.prevent="startPaneDrag('calculated', $event)">
+                    <h2 class="settings-title mb-0">Illuminance</h2>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary pane-dock-button"
+                            x-on:click.stop="togglePaneDock('calculated')"
+                            x-bind:disabled="isMobileLayout()"
+                            x-text="paneState.calculated.undocked ? 'Dock' : 'Undock'"></button>
+                </div>
+                <div class="metrics-list small">
+                    <div class="metric-row"><span>Target illuminance</span><strong x-text="formatLux(calc.targetIlluminanceLux)"></strong></div>
+                    <div class="metric-row"><span>Target distance</span><strong x-text="formatDistance(calc.targetDistanceM)"></strong></div>
+                    <div class="metric-row"><span>Core diameter at target</span><strong x-text="formatMeters(calc.targetCoreDiameterM, 2)"></strong></div>
+                    <div class="metric-row"><span>Spill diameter at target</span><strong x-text="formatMeters(calc.targetSpillDiameterM, 2)"></strong></div>
+                    <div class="metric-row"><span>Center beam intensity</span><strong x-text="formatCandela(calc.effectiveCenterCandela)"></strong></div>
+                    <div class="metric-row"><span>Active beam angle</span><strong x-text="formatDegrees(calc.activeBeamAngleDeg)"></strong></div>
+                    <div class="metric-row"><span>1 lux range (centerline)</span><strong x-text="formatDistance(calc.oneLuxRangeM)"></strong></div>
+                    <div class="metric-row"><span>Visual cutoff range</span><strong x-text="formatDistance(calc.cutoffRangeM)"></strong></div>
+                    <div class="metric-row"><span>Atmospheric loss at effective wavelength</span><strong x-text="formatDbPerKm(calc.atmosphericLossDbPerKmAtEffectiveWavelength)"></strong></div>
+                    <div class="metric-row"><span>Target atmospheric transmission</span><strong x-text="formatPercent(calc.targetTransmissionFraction)"></strong></div>
+                </div>
+            </section>
+
+            <section class="settings-section mt-3">
+                <h2 class="settings-title">Formula sources</h2>
+                <ul class="small mb-0 ps-3">
+                    <li><a href="https://www.streamlight.com/docs/default-source/ansi-documents/ansi-pres.pdf?sfvrsn=2" target="_blank" rel="noopener noreferrer">ANSI/PLATO FL1 beam distance and inverse-square relation</a></li>
+                    <li><a href="https://www.electropedia.org/iev/iev.nsf/display?ievref=845-25-104&openform=" target="_blank" rel="noopener noreferrer">IEC photometric distance law: E = (I cos(theta)) / d²</a></li>
+                    <li><a href="https://energystar.gov/sites/default/files/ENERGY%20STAR%20Lamps%20V2.1%20Final%20Specification_1.pdf" target="_blank" rel="noopener noreferrer">Beam-angle and field-angle definitions</a></li>
+                    <li><a href="https://ies.org/education/learn-about-ies-files/" target="_blank" rel="noopener noreferrer">IES photometric distributions (future profile support)</a></li>
+                </ul>
+            </section>
+
+            <p class="small text-body-secondary mt-2 mb-0">
+                Model uses a flux-conserving optical zoom behavior, two-lobe Gaussian spill profile, and optional atmospheric attenuation.
+            </p>
+        </div>
+    </section>
+
+    <section class="card shadow-sm overflow-hidden map-card">
+        <div class="map-canvas-actions">
+            <button type="button"
+                    class="btn btn-sm btn-light map-maximize-button"
+                    x-on:click="toggleMapMaximized()"
+                    x-bind:title="mapMaximized ? 'Restore map' : 'Maximize map'"
+                    x-bind:aria-label="mapMaximized ? 'Restore map' : 'Maximize map'">
+                <svg x-show="!mapMaximized" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M1 1h6v1.5H3.56L7.22 6.16 6.16 7.22 2.5 3.56V7H1zm14 0v6h-1.5V3.56l-3.66 3.66-1.06-1.06 3.66-3.66H9V1zm0 14H9v-1.5h3.44l-3.66-3.66 1.06-1.06 3.66 3.66V9H15zM1 15V9h1.5v3.44l3.66-3.66 1.06 1.06-3.66 3.66H7V15z"></path>
+                </svg>
+                <svg x-show="mapMaximized" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    <path d="M6.25 1H1v5.25h1.5V3.56L6.22 7.3l1.06-1.06L3.56 2.5h2.69zm3.5 0v1.5h2.69L8.72 6.22 9.78 7.3l3.72-3.74v2.69H15V1zM6.22 8.72 2.5 12.44V9.75H1V15h5.25v-1.5H3.56l3.72-3.72zm3.56 0L8.72 9.78l3.72 3.72H9.75V15H15V9.75h-1.5v2.69z"></path>
+                </svg>
+            </button>
+        </div>
+
+        <div class="map-container" x-ref="map"></div>
+        <div class="map-action-menu card shadow-sm"
+             x-show="mapActionMenuVisible"
+             x-transition
+             x-bind:style="'left:' + mapActionMenuX + 'px; top:' + mapActionMenuY + 'px;'"
+             x-on:click.outside="closeMapActionMenu()">
+            <div class="card-body p-2 d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary map-action-button" x-on:click="setOriginFromMapActionMenu()">
+                    <span class="map-action-icon map-action-icon-origin" x-bind:style="'--origin-color:' + beamColorHex" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" focusable="false">
+                            <circle cx="8" cy="8" r="5" fill="var(--origin-color, currentColor)" stroke="currentColor" stroke-width="1.6"></circle>
+                        </svg>
+                    </span>
+                    <span>Set Origin</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary map-action-button" x-on:click="setTargetFromMapActionMenu()">
+                    <span class="map-action-icon map-action-icon-target" aria-hidden="true">
+                        <svg viewBox="0 0 16 16" focusable="false">
+                            <circle cx="8" cy="8" r="4.2" fill="none" stroke="currentColor" stroke-width="1.4"></circle>
+                            <line x1="8" y1="0.8" x2="8" y2="3.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></line>
+                            <line x1="8" y1="12.8" x2="8" y2="15.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></line>
+                            <line x1="0.8" y1="8" x2="3.2" y2="8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></line>
+                            <line x1="12.8" y1="8" x2="15.2" y2="8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></line>
+                            <circle cx="8" cy="8" r="1.2" fill="currentColor"></circle>
+                        </svg>
+                    </span>
+                    <span>Set Target</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="alert m-3 p-2 status-box"
+             x-show="statusError && statusMessage"
+             x-bind:class="'alert-danger'"
+             x-text="statusMessage"></div>
+    </section>
+</div>
+
+@section Scripts {
+    <partial name="_OpenLayersMapScriptsPartial" />
+    <script src="~/_content/Ramn.Labs.Frontend/js/tools/searchlight.js" asp-append-version="true"></script>
+}

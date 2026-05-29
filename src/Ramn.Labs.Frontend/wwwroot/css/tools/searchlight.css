@@ -98,7 +98,7 @@
 
 @media (min-width: 992px) {
     .tool-grid {
-        grid-template-columns: minmax(0, 1fr) 420px;
+        grid-template-columns: minmax(0, 1fr) 440px;
     }
 }
 
@@ -158,7 +158,7 @@
     left: 0;
     z-index: 1100;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) min(30rem, 38vw);
+    grid-template-columns: minmax(0, 1fr) min(31rem, 40vw);
     background: var(--bs-body-bg);
     margin: 0;
     gap: 1rem;
@@ -229,28 +229,28 @@
     border-color: rgba(0, 0, 0, 0.16);
 }
 
-.laser-wavelength-range::-webkit-slider-thumb {
-    background: var(--wavelength-color, #22d3ee);
+.searchlight-cct-range::-webkit-slider-thumb {
+    background: var(--cct-color, #f8f9fa);
     border: 1px solid rgba(0, 0, 0, 0.25);
 }
 
-.laser-wavelength-range:focus::-webkit-slider-thumb,
-.laser-wavelength-range:active::-webkit-slider-thumb {
-    background: var(--wavelength-color, #22d3ee);
+.searchlight-cct-range:focus::-webkit-slider-thumb,
+.searchlight-cct-range:active::-webkit-slider-thumb {
+    background: var(--cct-color, #f8f9fa);
     border: 1px solid rgba(0, 0, 0, 0.25);
 }
 
-.laser-wavelength-range::-moz-range-thumb {
-    background: var(--wavelength-color, #22d3ee);
+.searchlight-cct-range::-moz-range-thumb {
+    background: var(--cct-color, #f8f9fa);
     border: 1px solid rgba(0, 0, 0, 0.25);
 }
 
-[data-bs-theme="dark"] .laser-wavelength-range:focus::-webkit-slider-thumb,
-[data-bs-theme="dark"] .laser-wavelength-range:active::-webkit-slider-thumb,
-[data-bs-theme="dark"] .laser-wavelength-range:focus::-moz-range-thumb,
-[data-bs-theme="dark"] .laser-wavelength-range:active::-moz-range-thumb,
-[data-bs-theme="dark"] .laser-wavelength-range::-webkit-slider-thumb,
-[data-bs-theme="dark"] .laser-wavelength-range::-moz-range-thumb {
+[data-bs-theme="dark"] .searchlight-cct-range:focus::-webkit-slider-thumb,
+[data-bs-theme="dark"] .searchlight-cct-range:active::-webkit-slider-thumb,
+[data-bs-theme="dark"] .searchlight-cct-range:focus::-moz-range-thumb,
+[data-bs-theme="dark"] .searchlight-cct-range:active::-moz-range-thumb,
+[data-bs-theme="dark"] .searchlight-cct-range::-webkit-slider-thumb,
+[data-bs-theme="dark"] .searchlight-cct-range::-moz-range-thumb {
     border-color: rgba(255, 255, 255, 0.35);
 }
 

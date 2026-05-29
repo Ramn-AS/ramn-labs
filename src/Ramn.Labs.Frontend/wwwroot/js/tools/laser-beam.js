@@ -1,8 +1,10 @@
 document.addEventListener("alpine:init", () => {
     const preferencesStore = window.preferencesStore;
     const maxRenderedSegments = 800;
+    const earthScaleMaxRangeM = 20000000;
     const specPreferenceKey = "ramnlabs.laser-beam.spec.v1";
     const mapViewPreferenceKey = "ramnlabs.laser-beam.map-view.v1";
+    const panePreferenceKey = "ramnlabs.laser-beam.panes.v1";
     const safetyThresholdsWm2 = Object.freeze({
         nohdMpe: 25.4,
         szed: 1.0,
@@ -67,6 +69,10 @@ document.addEventListener("alpine:init", () => {
 
     function cloneSpec(spec) {
         return JSON.parse(JSON.stringify(spec));
+    }
+
+    function isFiniteCoordinate(value) {
+        return typeof value === "number" && Number.isFinite(value);
     }
 
     function clamp(value, min, max) {
@@ -212,6 +218,21 @@ document.addEventListener("alpine:init", () => {
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
     }
 
+    function createDefaultPaneState() {
+        return {
+            calculated: {
+                undocked: true,
+                left: null,
+                top: null
+            },
+            safety: {
+                undocked: true,
+                left: null,
+                top: null
+            }
+        };
+    }
+
     Alpine.data("laserBeamTool", () => ({
         spec: cloneSpec(defaultSpec),
         calc: {
@@ -258,12 +279,28 @@ document.addEventListener("alpine:init", () => {
         targetCrosshairDataUri: createTargetCrosshairDataUri(),
         statusMessage: null,
         statusError: false,
+        mapActionMenuVisible: false,
+        mapActionMenuX: 12,
+        mapActionMenuY: 12,
+        mapActionLonLat: null,
+        paneState: createDefaultPaneState(),
+        paneAutoDocked: {
+            calculated: false,
+            safety: false
+        },
+        activePaneDrag: null,
+        paneDragMoveHandler: null,
+        paneDragUpHandler: null,
         hasSavedMapView: false,
+        navbarCollapseElement: null,
+        navbarCollapseShownHandler: null,
+        navbarCollapseHiddenHandler: null,
 
         init() {
             this.loadSpecPreference();
             this.mapMaximized = true;
             this.updateMapMaximizedOffset();
+            this.loadPanePreference();
             document.body.classList.add("map-fullscreen-active");
 
             this.resizeHandler = () => {
@@ -271,9 +308,29 @@ document.addEventListener("alpine:init", () => {
                     this.updateMapMaximizedOffset();
                 }
 
+                this.syncPaneDockingForViewport();
+
+                for (const paneKey of ["calculated", "safety"]) {
+                    if (this.paneState[paneKey] && this.paneState[paneKey].undocked) {
+                        this.ensurePaneInViewport(paneKey);
+                    }
+                }
+
                 this.ensureMapSize();
             };
             window.addEventListener("resize", this.resizeHandler);
+
+            this.navbarCollapseElement = document.getElementById("mainNavbarCollapse");
+            this.navbarCollapseShownHandler = () => {
+                this.onNavbarCollapseStateChanged();
+            };
+            this.navbarCollapseHiddenHandler = () => {
+                this.onNavbarCollapseStateChanged();
+            };
+            if (this.navbarCollapseElement) {
+                this.navbarCollapseElement.addEventListener("shown.bs.collapse", this.navbarCollapseShownHandler);
+                this.navbarCollapseElement.addEventListener("hidden.bs.collapse", this.navbarCollapseHiddenHandler);
+            }
 
             this.errorHandler = (event) => {
                 this.setStatus(`Runtime error: ${event.message || "Unknown error."}`, true);
@@ -284,6 +341,8 @@ document.addEventListener("alpine:init", () => {
                 this.setStatus(`Unhandled rejection: ${String(event.reason || "Unknown error.")}`, true);
             };
             window.addEventListener("unhandledrejection", this.rejectionHandler);
+
+            this.syncPaneDockingForViewport();
 
             window.requestAnimationFrame(() => {
                 try {
@@ -327,6 +386,18 @@ document.addEventListener("alpine:init", () => {
                 this.rejectionHandler = null;
             }
 
+            if (this.navbarCollapseElement) {
+                if (this.navbarCollapseShownHandler) {
+                    this.navbarCollapseElement.removeEventListener("shown.bs.collapse", this.navbarCollapseShownHandler);
+                }
+                if (this.navbarCollapseHiddenHandler) {
+                    this.navbarCollapseElement.removeEventListener("hidden.bs.collapse", this.navbarCollapseHiddenHandler);
+                }
+            }
+            this.navbarCollapseElement = null;
+            this.navbarCollapseShownHandler = null;
+            this.navbarCollapseHiddenHandler = null;
+
             if (this.dragControl && this.map) {
                 this.dragControl.deactivate();
                 this.map.removeControl(this.dragControl);
@@ -336,6 +407,9 @@ document.addEventListener("alpine:init", () => {
                 this.map.destroy();
                 this.map = null;
             }
+
+            this.stopPaneDrag();
+            this.closeMapActionMenu();
         },
 
         loadSpecPreference() {
@@ -361,6 +435,45 @@ document.addEventListener("alpine:init", () => {
             }
 
             preferencesStore.setPreference(specPreferenceKey, this.spec);
+        },
+
+        loadPanePreference() {
+            this.paneState = createDefaultPaneState();
+            if (!preferencesStore || typeof preferencesStore.getPreference !== "function") {
+                this.applyDefaultPanePlacements();
+                return;
+            }
+
+            const saved = preferencesStore.getPreference(panePreferenceKey, null);
+            if (!saved || typeof saved !== "object") {
+                this.applyDefaultPanePlacements();
+                return;
+            }
+
+            for (const paneKey of ["calculated", "safety"]) {
+                const nextPane = saved[paneKey];
+                if (!nextPane || typeof nextPane !== "object") {
+                    continue;
+                }
+
+                this.paneState[paneKey].undocked = Boolean(nextPane.undocked);
+                this.paneState[paneKey].left = isFiniteCoordinate(nextPane.left)
+                    ? nextPane.left
+                    : this.paneState[paneKey].left;
+                this.paneState[paneKey].top = isFiniteCoordinate(nextPane.top)
+                    ? nextPane.top
+                    : this.paneState[paneKey].top;
+            }
+
+            this.applyDefaultPanePlacements();
+        },
+
+        persistPanePreference() {
+            if (!preferencesStore || typeof preferencesStore.setPreference !== "function") {
+                return;
+            }
+
+            preferencesStore.setPreference(panePreferenceKey, this.paneState);
         },
 
         loadMapViewPreference() {
@@ -419,7 +532,7 @@ document.addEventListener("alpine:init", () => {
                 units: "m",
                 controls: [
                     new OpenLayers.Control.Navigation(),
-                    new OpenLayers.Control.ZoomPanel(),
+                    new OpenLayers.Control.Zoom(),
                     new OpenLayers.Control.Attribution()
                 ]
             });
@@ -450,10 +563,12 @@ document.addEventListener("alpine:init", () => {
 
             this.dragControl = new OpenLayers.Control.DragFeature(this.markerLayer, {
                 onDrag: (feature) => {
+                    this.closeMapActionMenu();
                     this.updatePointFromFeature(feature);
                     this.refreshDuringDrag(feature);
                 },
                 onComplete: (feature) => {
+                    this.closeMapActionMenu();
                     this.updatePointFromFeature(feature);
                     this.persistSpecPreference();
                     this.refresh(false);
@@ -474,6 +589,12 @@ document.addEventListener("alpine:init", () => {
 
             this.map.events.register("moveend", this, () => {
                 this.persistMapViewPreference();
+            });
+            this.map.events.register("click", this, (event) => {
+                this.openMapActionMenu(event);
+            });
+            this.map.events.register("movestart", this, () => {
+                this.closeMapActionMenu();
             });
 
             return true;
@@ -524,6 +645,58 @@ document.addEventListener("alpine:init", () => {
             this.maximizedTopOffset = navbar ? Math.max(0, Math.ceil(navbar.getBoundingClientRect().bottom)) : 0;
         },
 
+        isMobileLayout() {
+            return window.innerWidth < 992;
+        },
+
+        onNavbarCollapseStateChanged() {
+            this.updateMapMaximizedOffset();
+            this.syncPaneDockingForViewport();
+            for (const paneKey of ["calculated", "safety"]) {
+                if (this.paneState[paneKey] && this.paneState[paneKey].undocked) {
+                    this.ensurePaneInViewport(paneKey);
+                }
+            }
+
+            this.$nextTick(() => {
+                this.ensureMapSize();
+            });
+        },
+
+        syncPaneDockingForViewport() {
+            let changed = false;
+
+            if (this.isMobileLayout()) {
+                for (const paneKey of ["calculated", "safety"]) {
+                    const pane = this.paneState[paneKey];
+                    if (!pane || !pane.undocked) {
+                        continue;
+                    }
+
+                    pane.undocked = false;
+                    this.paneAutoDocked[paneKey] = true;
+                    changed = true;
+                }
+            }
+            else {
+                for (const paneKey of ["calculated", "safety"]) {
+                    const pane = this.paneState[paneKey];
+                    if (!pane || !this.paneAutoDocked[paneKey]) {
+                        continue;
+                    }
+
+                    pane.undocked = true;
+                    this.paneAutoDocked[paneKey] = false;
+                    this.ensurePaneInViewport(paneKey);
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                this.stopPaneDrag();
+            }
+        },
+
         ensureMapSize() {
             if (!this.map) {
                 return;
@@ -533,6 +706,7 @@ document.addEventListener("alpine:init", () => {
         },
 
         refreshFromInputs(recreateMarkers) {
+            this.closeMapActionMenu();
             this.normalizeSpec();
             this.persistSpecPreference();
             this.refresh(recreateMarkers === true);
@@ -541,6 +715,16 @@ document.addEventListener("alpine:init", () => {
         resetDemo() {
             this.spec = cloneSpec(defaultSpec);
             this.persistSpecPreference();
+            this.stopPaneDrag();
+            this.paneState = createDefaultPaneState();
+            this.applyDefaultPanePlacements();
+            this.paneAutoDocked = {
+                calculated: false,
+                safety: false
+            };
+            if (preferencesStore && typeof preferencesStore.setPreference === "function") {
+                preferencesStore.setPreference(panePreferenceKey, null);
+            }
             this.refresh(true);
             this.centerOnOrigin();
         },
@@ -560,6 +744,8 @@ document.addEventListener("alpine:init", () => {
                 return;
             }
 
+            this.closeMapActionMenu();
+
             const origin = this.lonLatToMercator(this.spec.originLon, this.spec.originLat);
             const target = this.lonLatToMercator(this.spec.targetLon, this.spec.targetLat);
             const bounds = new OpenLayers.Bounds();
@@ -575,6 +761,262 @@ document.addEventListener("alpine:init", () => {
             }
 
             this.persistMapViewPreference();
+        },
+
+        getDefaultPanePlacement(paneKey) {
+            const gap = 12;
+            const viewport = this.getPaneViewportRect();
+            const left = viewport.minX;
+            const safetySize = this.getPaneDimensions("safety");
+            const calculatedSize = this.getPaneDimensions("calculated");
+            const safetyTop = Math.max(viewport.minY, viewport.maxY - safetySize.height);
+            const calculatedTop = Math.max(viewport.minY, safetyTop - calculatedSize.height - gap);
+
+            if (paneKey === "safety") {
+                return { left, top: safetyTop };
+            }
+
+            return { left, top: calculatedTop };
+        },
+
+        getPaneViewportRect() {
+            const padding = 10;
+            const mapElement = this.$refs && this.$refs.map ? this.$refs.map : null;
+            if (mapElement && typeof mapElement.getBoundingClientRect === "function") {
+                const rect = mapElement.getBoundingClientRect();
+                if (Number.isFinite(rect.left)
+                    && Number.isFinite(rect.top)
+                    && Number.isFinite(rect.width)
+                    && Number.isFinite(rect.height)
+                    && rect.width > 60
+                    && rect.height > 60) {
+                    return {
+                        minX: Math.ceil(rect.left) + padding,
+                        maxX: Math.floor(rect.right) - padding,
+                        minY: Math.ceil(rect.top) + padding,
+                        maxY: Math.floor(rect.bottom) - padding
+                    };
+                }
+            }
+
+            const minY = (this.maximizedTopOffset || 0) + 8;
+            return {
+                minX: 8,
+                maxX: Math.max(8, window.innerWidth - 8),
+                minY,
+                maxY: Math.max(minY, window.innerHeight - 8)
+            };
+        },
+
+        getPaneViewportDimensions() {
+            const viewport = this.getPaneViewportRect();
+            const availableWidth = Math.max(160, viewport.maxX - viewport.minX);
+            const availableHeight = Math.max(160, viewport.maxY - viewport.minY);
+
+            return {
+                width: Math.min(420, availableWidth),
+                height: Math.min(420, availableHeight)
+            };
+        },
+
+        getPaneDimensions(paneKey) {
+            const viewport = this.getPaneViewportDimensions();
+            const refName = paneKey === "safety" ? "paneSafety" : "paneCalculated";
+            const paneElement = this.$refs ? this.$refs[refName] : null;
+            const measuredHeight = paneElement ? paneElement.offsetHeight : null;
+            const height = Number.isFinite(measuredHeight) && measuredHeight > 0
+                ? Math.min(measuredHeight, viewport.height)
+                : viewport.height;
+
+            return {
+                width: viewport.width,
+                height
+            };
+        },
+
+        applyDefaultPanePlacements() {
+            for (const paneKey of ["safety", "calculated"]) {
+                const pane = this.paneState[paneKey];
+                if (!pane) {
+                    continue;
+                }
+
+                if (!isFiniteCoordinate(pane.left) || !isFiniteCoordinate(pane.top)) {
+                    const placement = this.getDefaultPanePlacement(paneKey);
+                    pane.left = placement.left;
+                    pane.top = placement.top;
+                }
+            }
+        },
+
+        getPaneStyle(paneKey) {
+            const pane = this.paneState[paneKey];
+            if (!pane || !pane.undocked) {
+                return "";
+            }
+
+            if (!isFiniteCoordinate(pane.left) || !isFiniteCoordinate(pane.top)) {
+                const placement = this.getDefaultPanePlacement(paneKey);
+                pane.left = placement.left;
+                pane.top = placement.top;
+            }
+
+            const { width } = this.getPaneDimensions(paneKey);
+            return `left:${pane.left}px;top:${pane.top}px;width:${width}px;`;
+        },
+
+        togglePaneDock(paneKey) {
+            const pane = this.paneState[paneKey];
+            if (!pane) {
+                return;
+            }
+
+            if (this.isMobileLayout() && !pane.undocked) {
+                return;
+            }
+
+            pane.undocked = !pane.undocked;
+            this.paneAutoDocked[paneKey] = false;
+            if (pane.undocked) {
+                const placement = this.getDefaultPanePlacement(paneKey);
+                if (!isFiniteCoordinate(pane.left)) {
+                    pane.left = placement.left;
+                }
+                if (!isFiniteCoordinate(pane.top)) {
+                    pane.top = placement.top;
+                }
+
+                this.ensurePaneInViewport(paneKey);
+            }
+
+            this.persistPanePreference();
+        },
+
+        startPaneDrag(paneKey, event) {
+            const pane = this.paneState[paneKey];
+            if (!pane || !pane.undocked || !event || event.button !== 0) {
+                return;
+            }
+
+            if (event.target && event.target.closest("button, a, input, select, textarea, label")) {
+                return;
+            }
+
+            this.stopPaneDrag();
+            this.activePaneDrag = {
+                paneKey,
+                offsetX: event.clientX - pane.left,
+                offsetY: event.clientY - pane.top
+            };
+
+            this.paneDragMoveHandler = (moveEvent) => {
+                this.onPaneDrag(moveEvent);
+            };
+            this.paneDragUpHandler = () => {
+                this.stopPaneDrag();
+                this.persistPanePreference();
+            };
+
+            document.addEventListener("mousemove", this.paneDragMoveHandler);
+            document.addEventListener("mouseup", this.paneDragUpHandler);
+        },
+
+        onPaneDrag(event) {
+            if (!this.activePaneDrag || !event) {
+                return;
+            }
+
+            const pane = this.paneState[this.activePaneDrag.paneKey];
+            if (!pane) {
+                return;
+            }
+
+            pane.left = event.clientX - this.activePaneDrag.offsetX;
+            pane.top = event.clientY - this.activePaneDrag.offsetY;
+            this.ensurePaneInViewport(this.activePaneDrag.paneKey);
+        },
+
+        stopPaneDrag() {
+            if (this.paneDragMoveHandler) {
+                document.removeEventListener("mousemove", this.paneDragMoveHandler);
+                this.paneDragMoveHandler = null;
+            }
+
+            if (this.paneDragUpHandler) {
+                document.removeEventListener("mouseup", this.paneDragUpHandler);
+                this.paneDragUpHandler = null;
+            }
+
+            this.activePaneDrag = null;
+        },
+
+        ensurePaneInViewport(paneKey) {
+            const pane = this.paneState[paneKey];
+            if (!pane) {
+                return;
+            }
+
+            const viewport = this.getPaneViewportRect();
+            const { width, height } = this.getPaneDimensions(paneKey);
+            const minX = viewport.minX;
+            const maxX = Math.max(minX, viewport.maxX - width);
+            const minY = viewport.minY;
+            const maxY = Math.max(minY, viewport.maxY - height);
+
+            pane.left = clamp(Number(pane.left), minX, maxX);
+            pane.top = clamp(Number(pane.top), minY, maxY);
+        },
+
+        openMapActionMenu(event) {
+            if (!this.map || !event || !event.xy || !this.$refs.map) {
+                return;
+            }
+
+            const mercatorLonLat = this.map.getLonLatFromViewPortPx(event.xy);
+            if (!mercatorLonLat) {
+                return;
+            }
+
+            const geoLonLat = this.mercatorToLonLat(mercatorLonLat.lon, mercatorLonLat.lat);
+            this.mapActionLonLat = {
+                lon: clamp(Number(geoLonLat.lon), -180, 180),
+                lat: clamp(Number(geoLonLat.lat), -85, 85)
+            };
+
+            const width = this.$refs.map.clientWidth || 0;
+            const height = this.$refs.map.clientHeight || 0;
+            this.mapActionMenuX = clamp((event.xy.x || 0) + 10, 8, Math.max(8, width - 170));
+            this.mapActionMenuY = clamp((event.xy.y || 0) + 10, 8, Math.max(8, height - 62));
+            this.mapActionMenuVisible = true;
+        },
+
+        closeMapActionMenu() {
+            this.mapActionMenuVisible = false;
+            this.mapActionLonLat = null;
+        },
+
+        setOriginFromMapActionMenu() {
+            if (!this.mapActionLonLat) {
+                return;
+            }
+
+            this.spec.originLon = Number(this.mapActionLonLat.lon.toFixed(6));
+            this.spec.originLat = Number(this.mapActionLonLat.lat.toFixed(6));
+            this.persistSpecPreference();
+            this.refresh(false);
+            this.closeMapActionMenu();
+        },
+
+        setTargetFromMapActionMenu() {
+            if (!this.mapActionLonLat) {
+                return;
+            }
+
+            this.spec.targetLon = Number(this.mapActionLonLat.lon.toFixed(6));
+            this.spec.targetLat = Number(this.mapActionLonLat.lat.toFixed(6));
+            this.persistSpecPreference();
+            this.refresh(false);
+            this.closeMapActionMenu();
         },
 
         refresh(recreateMarkers) {
@@ -710,7 +1152,7 @@ document.addEventListener("alpine:init", () => {
         calculateRangeForEffectiveIrradianceThreshold(thresholdWm2, correctionFactor) {
             const correctedThresholdWm2 = Math.max(0.000000001, Number(thresholdWm2) || 0);
             const vcf = clamp(Number(correctionFactor) || 0, 0.000000001, 1);
-            const maxRangeM = 250000;
+            const maxRangeM = earthScaleMaxRangeM;
 
             const nearIrradiance = this.irradiance(0) * vcf;
             if (nearIrradiance <= correctedThresholdWm2) {
@@ -799,7 +1241,7 @@ document.addEventListener("alpine:init", () => {
 
         calculateCutoffRange() {
             const cutoff = Math.max(0.000001, this.spec.cutoffWm2);
-            const maxRangeM = 250000;
+            const maxRangeM = earthScaleMaxRangeM;
             const lowRangeIrradiance = this.irradiance(0);
             if (lowRangeIrradiance <= cutoff) {
                 return 0;
@@ -1066,7 +1508,7 @@ document.addEventListener("alpine:init", () => {
         },
 
         visualBeamHalfWidth(rangeM) {
-            return Math.max((this.beamDiameter(rangeM) / 2) * this.spec.visualExaggeration, 1.0);
+            return (this.beamDiameter(rangeM) / 2) * this.spec.visualExaggeration;
         },
 
         opacityForIrradiance(irradianceWm2, visualSaturationWm2, gamma) {
