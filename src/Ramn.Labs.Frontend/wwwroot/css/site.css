@@ -35,6 +35,8 @@ body {
   min-height: var(--site-footer-height);
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 body.map-fullscreen-active {
@@ -52,6 +54,46 @@ body.map-fullscreen-active {
 
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
   text-align: start;
+}
+
+.nav-tool-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tool-nav-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 1rem;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.tool-nav-icon--geohash {
+  -webkit-mask-image: url("../icons/tools/geohash.svg");
+  mask-image: url("../icons/tools/geohash.svg");
+}
+
+.tool-nav-icon--polyhasher {
+  -webkit-mask-image: url("../icons/tools/polyhasher.svg");
+  mask-image: url("../icons/tools/polyhasher.svg");
+}
+
+.tool-nav-icon--georaptor {
+  -webkit-mask-image: url("../icons/tools/georaptor.svg");
+  mask-image: url("../icons/tools/georaptor.svg");
+}
+
+.tool-nav-icon--laser {
+  -webkit-mask-image: url("../icons/tools/laser.svg");
+  mask-image: url("../icons/tools/laser.svg");
 }
 
 .tool-tile-grid {

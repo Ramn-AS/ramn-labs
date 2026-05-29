@@ -1,0 +1,223 @@
+@page
+@model Ramn.Labs.Frontend.Pages.Tools.LaserBeamModel
+@{
+    ViewData["Title"] = "Laser Beam Irradiance Tool";
+    ViewData["Description"] = "Estimate laser irradiance falloff over distance on an interactive map with draggable origin and target points.";
+    ViewData["SocialImagePath"] = "/_content/Ramn.Labs.Frontend/images/tools/laser-beam-preview.jpg";
+    ViewData["SocialImageWidth"] = "1661";
+    ViewData["SocialImageHeight"] = "1097";
+    ViewData["SocialImageAlt"] = "Laser Beam Irradiance tool map and controls preview";
+}
+
+@section Styles {
+    <partial name="_OpenLayersMapStylesPartial" />
+    <link rel="stylesheet" href="~/_content/Ramn.Labs.Frontend/css/tools/laser-beam.css" asp-append-version="true" />
+}
+
+<div x-data="laserBeamTool()"
+     class="tool-grid"
+     x-bind:class="{ 'map-maximized': mapMaximized }"
+     x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''">
+    <section class="card shadow-sm controls-panel">
+        <div class="card-body">
+            <h1 class="h4 mb-3">Laser Beam Irradiance</h1>
+            <p class="text-body-secondary small mb-3">Drag map markers to set origin and target. The beam overlay extends until irradiance reaches the cutoff threshold.</p>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Laser properties</h2>
+                <div class="row g-2">
+                    <div class="col-12 tool-field">
+                        <label class="form-label" for="wavelengthNm">Wavelength: <span x-text="spec.wavelengthNm.toFixed(0) + ' nm'"></span></label>
+                        <input id="wavelengthNm"
+                               class="form-range laser-wavelength-range"
+                               type="range"
+                               min="200"
+                               max="1550"
+                               step="1"
+                               x-model.number="spec.wavelengthNm"
+                               x-on:input="refreshFromInputs(false)"
+                               x-bind:style="'--wavelength-color:' + beamColorHex + '; accent-color:' + beamColorHex" />
+                        <div class="small text-body-secondary">
+                            <span x-text="beamColorDescription"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="powerW">Optical power (W)</label>
+                        <input id="powerW" class="form-control" type="number" min="0" step="0.1" x-model.number="spec.powerW" x-on:input="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="divergenceMrad">Requested divergence (mrad)</label>
+                        <input id="divergenceMrad" class="form-control" type="number" min="0.001" step="0.01" x-model.number="spec.divergenceMrad" x-on:input="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="apertureMm">Aperture diameter (mm)</label>
+                        <input id="apertureMm" class="form-control" type="number" min="0" step="0.1" x-model.number="spec.apertureMm" x-on:input="refreshFromInputs(false)" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="beamQualityM2">Beam quality M²</label>
+                        <input id="beamQualityM2" class="form-control" type="number" min="1" max="50" step="0.1" x-model.number="spec.beamQualityM2" x-on:input="refreshFromInputs(false)" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Atmospheric settings</h2>
+                <div class="row g-2">
+                    <div class="col-12 tool-field">
+                        <div class="form-check form-switch mt-1">
+                            <input id="enableAtmosphericEffects"
+                                   class="form-check-input"
+                                   type="checkbox"
+                                   x-model="spec.enableAtmosphericEffects"
+                                   x-on:change="refreshFromInputs(false)" />
+                            <label class="form-check-label small" for="enableAtmosphericEffects">Enable atmospheric attenuation</label>
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="atmosphericLossDbPerKmAt550">Loss at 550 nm (dB/km)</label>
+                        <input id="atmosphericLossDbPerKmAt550"
+                               class="form-control"
+                               type="number"
+                               min="0"
+                               max="1000"
+                               step="0.01"
+                               x-model.number="spec.atmosphericLossDbPerKmAt550"
+                               x-on:input="refreshFromInputs(false)"
+                               x-bind:disabled="!spec.enableAtmosphericEffects" />
+                    </div>
+
+                    <div class="col-12 col-md-6 tool-field">
+                        <label class="form-label" for="atmosphericWavelengthExponent">Wavelength exponent</label>
+                        <input id="atmosphericWavelengthExponent"
+                               class="form-control"
+                               type="number"
+                               min="0"
+                               max="8"
+                               step="0.1"
+                               x-model.number="spec.atmosphericWavelengthExponent"
+                               x-on:input="refreshFromInputs(false)"
+                               x-bind:disabled="!spec.enableAtmosphericEffects" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section mb-3">
+                <h2 class="settings-title">Visualization settings</h2>
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <div class="tool-field mb-2">
+                            <label class="form-label" for="visualExaggeration">Visual width exaggeration: <span x-text="spec.visualExaggeration + 'x'"></span></label>
+                            <input id="visualExaggeration" class="form-range" type="range" min="1" max="200" step="1" x-model.number="spec.visualExaggeration" x-on:input="refreshFromInputs(false)" />
+                        </div>
+
+                        <div class="tool-field mb-2">
+                            <label class="form-label" for="segmentsPer100m">Gradient density: <span x-text="spec.segmentsPer100m.toFixed(1)"></span> / 100 m</label>
+                            <input id="segmentsPer100m" class="form-range" type="range" min="0.2" max="20" step="0.2" x-model.number="spec.segmentsPer100m" x-on:input="refreshFromInputs(false)" />
+                        </div>
+
+                        <div class="tool-field">
+                            <label class="form-label" for="gradientGamma">Falloff visual boost: <span x-text="spec.gradientGamma.toFixed(2)"></span></label>
+                            <input id="gradientGamma" class="form-range" type="range" min="0.15" max="1.5" step="0.05" x-model.number="spec.gradientGamma" x-on:input="refreshFromInputs(false)" />
+                        </div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <div class="tool-field mb-2">
+                            <div class="form-check form-switch mt-1">
+                                <input id="showSafetyOverlays"
+                                       class="form-check-input"
+                                       type="checkbox"
+                                       x-model="spec.showSafetyOverlays"
+                                       x-on:change="refreshFromInputs(false)" />
+                                <label class="form-check-label small" for="showSafetyOverlays">Show safety overlays</label>
+                            </div>
+                        </div>
+
+                        <div class="tool-field mb-2">
+                            <label class="form-label" for="visualSaturationWm2">Visual saturation (W/m²)</label>
+                            <input id="visualSaturationWm2" class="form-control" type="number" min="0.001" step="0.1" x-model.number="spec.visualSaturationWm2" x-on:input="refreshFromInputs(false)" />
+                        </div>
+
+                        <div class="tool-field">
+                            <label class="form-label" for="cutoffWm2">Cutoff (W/m²)</label>
+                            <input id="cutoffWm2" class="form-control" type="number" min="0.0001" step="0.01" x-model.number="spec.cutoffWm2" x-on:input="refreshFromInputs(false)" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-outline-secondary" x-on:click="centerOnOrigin()">Center on origin</button>
+                <button type="button" class="btn btn-outline-secondary" x-on:click="fitToPoints()">Fit bounds</button>
+                <button type="button" class="btn btn-primary" x-on:click="resetDemo()">Reset defaults</button>
+            </div>
+
+            <section class="settings-section metrics-section">
+                <h2 class="settings-title">Calculated values</h2>
+                <div class="metrics-list small">
+                    <div class="metric-row"><span>Target irradiance</span><strong x-text="formatIrradiance(calc.targetIrradianceWm2)"></strong></div>
+                    <div class="metric-row"><span>Target distance</span><strong x-text="formatDistance(calc.targetDistanceM)"></strong></div>
+                    <div class="metric-row"><span>Target beam diameter</span><strong x-text="formatMeters(calc.targetDiameterM, 2)"></strong></div>
+                    <div class="metric-row"><span>Cutoff range</span><strong x-text="formatDistance(calc.cutoffRangeM)"></strong></div>
+                    <div class="metric-row"><span>Bearing</span><strong x-text="formatBearing(calc.bearingDeg)"></strong></div>
+                    <div class="metric-row"><span>Diffraction floor divergence</span><strong x-text="formatMrad(calc.diffractionFloorMrad)"></strong></div>
+                    <div class="metric-row" x-show="showEffectiveDivergence()"><span>Effective divergence</span><strong x-text="formatMrad(calc.effectiveDivergenceMrad)"></strong></div>
+                    <div class="metric-row"><span>Atmospheric loss at wavelength</span><strong x-text="formatDbPerKm(calc.atmosphericLossDbPerKmAtWavelength)"></strong></div>
+                    <div class="metric-row"><span>Target atmospheric transmission</span><strong x-text="formatPercent(calc.targetTransmissionFraction)"></strong></div>
+                </div>
+            </section>
+
+            <section class="settings-section metrics-section mt-3">
+                <h2 class="settings-title">Safety distances</h2>
+                <div class="metrics-list small">
+                    <div class="metric-row">
+                        <span>Target safety status</span>
+                        <strong x-bind:class="calc.safety.statusClass" x-text="calc.safety.statusLabel"></strong>
+                    </div>
+                    <div class="metric-row"><span>NOHD</span><strong x-text="formatSafetyDistance(calc.safety.nohdM)"></strong></div>
+                    <div class="metric-row"><span>ED50</span><strong x-text="formatSafetyDistance(calc.safety.ed50M)"></strong></div>
+                    <div class="metric-row"><span>SZED</span><strong x-text="formatSafetyDistance(calc.safety.szedM)"></strong></div>
+                    <div class="metric-row"><span>CZED</span><strong x-text="formatSafetyDistance(calc.safety.czedM)"></strong></div>
+                    <div class="metric-row"><span>LFZED</span><strong x-text="formatSafetyDistance(calc.safety.lfzedM)"></strong></div>
+                    <div class="metric-row">
+                        <span>Visual correction factor</span>
+                        <strong x-text="calc.safety.visualCorrectionFactor ? calc.safety.visualCorrectionFactor.toFixed(4) : 'N/A (non-visible)'" ></strong>
+                    </div>
+                </div>
+            </section>
+
+            <section class="settings-section mt-3">
+                <h2 class="settings-title">Formula sources</h2>
+                <ul class="small mb-0 ps-3">
+                    <li><a href="https://www.laserpointersafety.com/safetyinfo/safetycalcs/index.html" target="_blank" rel="noopener noreferrer">LaserPointerSafety safety calculations (NOHD, SZED, CZED, LFZED, visual correction factor)</a></li>
+                    <li><a href="https://www.faa.gov/documentLibrary/media/Advisory_Circular/AC70-1B_with_chg1.pdf" target="_blank" rel="noopener noreferrer">FAA AC 70-1B (laser free / critical / sensitive / normal flight zone context)</a></li>
+                    <li><a href="https://www.rp-photonics.com/beam_divergence.html" target="_blank" rel="noopener noreferrer">RP Photonics beam divergence reference (diffraction-limited and M²-related divergence behavior)</a></li>
+                    <li><a href="https://en.wikipedia.org/wiki/Decibel" target="_blank" rel="noopener noreferrer">Decibel relation used for atmospheric transmission conversion</a></li>
+                </ul>
+            </section>
+
+            <p class="small text-body-secondary mt-2 mb-0">
+                Model includes diffraction-limited divergence floor (with M²) and wavelength-dependent atmospheric transmission.
+            </p>
+        </div>
+    </section>
+
+    <section class="card shadow-sm overflow-hidden map-card">
+        <div class="map-container" x-ref="map"></div>
+
+        <div class="alert m-3 p-2 status-box"
+             x-show="statusError && statusMessage"
+             x-bind:class="'alert-danger'"
+             x-text="statusMessage"></div>
+    </section>
+</div>
+
+@section Scripts {
+    <partial name="_OpenLayersMapScriptsPartial" />
+    <script src="~/_content/Ramn.Labs.Frontend/js/tools/laser-beam.js" asp-append-version="true"></script>
+}

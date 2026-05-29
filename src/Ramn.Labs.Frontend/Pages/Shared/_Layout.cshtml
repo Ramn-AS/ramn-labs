@@ -16,6 +16,9 @@
         var socialImageUrl = string.IsNullOrWhiteSpace(socialImagePath) || request is null
             ? null
             : $"{request.Scheme}://{request.Host}{socialImagePath}";
+        var socialImageWidth = ViewData["SocialImageWidth"]?.ToString();
+        var socialImageHeight = ViewData["SocialImageHeight"]?.ToString();
+        var socialImageAlt = ViewData["SocialImageAlt"] as string;
     }
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -30,13 +33,29 @@
     @if (!string.IsNullOrWhiteSpace(socialImageUrl))
     {
         <meta property="og:image" content="@socialImageUrl" />
+        @if (!string.IsNullOrWhiteSpace(socialImageWidth))
+        {
+            <meta property="og:image:width" content="@socialImageWidth" />
+        }
+        @if (!string.IsNullOrWhiteSpace(socialImageHeight))
+        {
+            <meta property="og:image:height" content="@socialImageHeight" />
+        }
+        @if (!string.IsNullOrWhiteSpace(socialImageAlt))
+        {
+            <meta property="og:image:alt" content="@socialImageAlt" />
+        }
     }
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content='@(!string.IsNullOrWhiteSpace(socialImageUrl) ? "summary_large_image" : "summary")' />
     <meta name="twitter:title" content="@titleText" />
     <meta name="twitter:description" content="@descriptionText" />
     @if (!string.IsNullOrWhiteSpace(socialImageUrl))
     {
         <meta name="twitter:image" content="@socialImageUrl" />
+        @if (!string.IsNullOrWhiteSpace(socialImageAlt))
+        {
+            <meta name="twitter:image:alt" content="@socialImageAlt" />
+        }
     }
     <script>
         (function () {
@@ -64,31 +83,46 @@
 <body x-data="themeController()" x-init="init()">
     <header>
         <nav class="navbar navbar-expand-sm border-bottom mb-3">
-            <div class="container">
+            <div class="container-fluid px-3 px-lg-4">
                 <a class="navbar-brand" asp-area="" asp-page="/Index">Ramn Labs</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
                         aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between align-items-center">
-                    <ul class="navbar-nav flex-grow-1">
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-end align-items-center gap-2">
+                    <ul class="navbar-nav ms-auto align-items-sm-center">
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Index">Home</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Tools/GeohashBrowser">Geohash Browser</a>
+                            <a class="nav-link nav-tool-link" asp-area="" asp-page="/Tools/GeohashBrowser">
+                                <span class="tool-nav-icon tool-nav-icon--geohash" aria-hidden="true"></span>
+                                <span>Geohash Browser</span>
+                            </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Tools/PolyHasher">PolyHasher</a>
+                            <a class="nav-link nav-tool-link" asp-area="" asp-page="/Tools/PolyHasher">
+                                <span class="tool-nav-icon tool-nav-icon--polyhasher" aria-hidden="true"></span>
+                                <span>PolyHasher</span>
+                            </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-area="" asp-page="/Tools/GeoRaptor">GeoRaptor</a>
+                            <a class="nav-link nav-tool-link" asp-area="" asp-page="/Tools/GeoRaptor">
+                                <span class="tool-nav-icon tool-nav-icon--georaptor" aria-hidden="true"></span>
+                                <span>GeoRaptor</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link nav-tool-link" asp-area="" asp-page="/Tools/LaserBeam">
+                                <span class="tool-nav-icon tool-nav-icon--laser" aria-hidden="true"></span>
+                                <span>Laser Irradiance</span>
+                            </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/About">About</a>
                         </li>
                     </ul>
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 ms-sm-2">
                         <label for="themeMode" class="small text-body-secondary m-0">Theme</label>
                         <select id="themeMode" class="form-select form-select-sm" style="width: auto;" x-model="theme" x-on:change="apply()">
                             <option value="system">System</option>
