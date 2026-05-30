@@ -278,6 +278,7 @@ document.addEventListener('alpine:init', () => {
                         return;
                     }
 
+                    this.normalizePanePlacements();
                     this.refresh(true);
                     if (!this.hasSavedMapView) {
                         this.fitToPoints();
@@ -379,6 +380,7 @@ document.addEventListener('alpine:init', () => {
 
             const pane = saved.calculated;
             if (!pane || typeof pane !== 'object') {
+                this.applyDefaultPanePlacements();
                 return;
             }
 
@@ -649,9 +651,8 @@ document.addEventListener('alpine:init', () => {
             this.paneAutoDocked = {
                 calculated: false
             };
-            if (preferencesStore && typeof preferencesStore.setPreference === 'function') {
-                preferencesStore.setPreference(panePreferenceKey, null);
-            }
+            this.normalizePanePlacements();
+            this.persistPanePreference();
             this.refresh(true);
             this.fitToPoints();
         },
@@ -765,6 +766,25 @@ document.addEventListener('alpine:init', () => {
                 const placement = this.getDefaultPanePlacement('calculated');
                 pane.left = placement.left;
                 pane.top = placement.top;
+            }
+        },
+
+        normalizePanePlacements() {
+            let changed = false;
+            this.applyDefaultPanePlacements();
+
+            const pane = this.paneState.calculated;
+            if (pane && pane.undocked) {
+                const beforeLeft = pane.left;
+                const beforeTop = pane.top;
+                this.ensurePaneInViewport('calculated');
+                if (beforeLeft !== pane.left || beforeTop !== pane.top) {
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                this.persistPanePreference();
             }
         },
 

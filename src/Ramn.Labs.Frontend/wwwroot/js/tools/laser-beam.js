@@ -350,6 +350,7 @@ document.addEventListener("alpine:init", () => {
                         return;
                     }
 
+                    this.normalizePanePlacements();
                     this.refresh(true);
                     if (!this.hasSavedMapView) {
                         this.fitToPoints();
@@ -722,9 +723,8 @@ document.addEventListener("alpine:init", () => {
                 calculated: false,
                 safety: false
             };
-            if (preferencesStore && typeof preferencesStore.setPreference === "function") {
-                preferencesStore.setPreference(panePreferenceKey, null);
-            }
+            this.normalizePanePlacements();
+            this.persistPanePreference();
             this.refresh(true);
             this.centerOnOrigin();
         },
@@ -846,6 +846,29 @@ document.addEventListener("alpine:init", () => {
                     pane.left = placement.left;
                     pane.top = placement.top;
                 }
+            }
+        },
+
+        normalizePanePlacements() {
+            let changed = false;
+            this.applyDefaultPanePlacements();
+
+            for (const paneKey of ["calculated", "safety"]) {
+                const pane = this.paneState[paneKey];
+                if (!pane || !pane.undocked) {
+                    continue;
+                }
+
+                const beforeLeft = pane.left;
+                const beforeTop = pane.top;
+                this.ensurePaneInViewport(paneKey);
+                if (beforeLeft !== pane.left || beforeTop !== pane.top) {
+                    changed = true;
+                }
+            }
+
+            if (changed) {
+                this.persistPanePreference();
             }
         },
 
