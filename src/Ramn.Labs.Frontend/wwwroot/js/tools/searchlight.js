@@ -194,7 +194,7 @@ document.addEventListener('alpine:init', () => {
         originFeature: null,
         targetFeature: null,
         dragControl: null,
-        mapMaximized: false,
+        mapMaximized: true,
         maximizedTopOffset: 0,
         resizeHandler: null,
         themeObserver: null,
@@ -223,14 +223,9 @@ document.addEventListener('alpine:init', () => {
 
         init() {
             this.loadSpecPreference();
-            this.mapMaximized = preferencesStore && typeof preferencesStore.getMapMaximizedPreference === 'function'
-                ? preferencesStore.getMapMaximizedPreference()
-                : false;
-
+            this.mapMaximized = true;
             this.updateMapMaximizedOffset();
-            if (this.mapMaximized) {
-                document.body.classList.add('map-fullscreen-active');
-            }
+            document.body.classList.add('map-fullscreen-active');
             this.loadPanePreference();
 
             this.resizeHandler = () => {
@@ -561,18 +556,9 @@ document.addEventListener('alpine:init', () => {
         },
 
         toggleMapMaximized() {
-            this.mapMaximized = !this.mapMaximized;
-            if (preferencesStore && typeof preferencesStore.setMapMaximizedPreference === 'function') {
-                preferencesStore.setMapMaximizedPreference(this.mapMaximized);
-            }
-
-            if (this.mapMaximized) {
-                this.updateMapMaximizedOffset();
-                document.body.classList.add('map-fullscreen-active');
-            }
-            else {
-                document.body.classList.remove('map-fullscreen-active');
-            }
+            this.mapMaximized = true;
+            this.updateMapMaximizedOffset();
+            document.body.classList.add('map-fullscreen-active');
 
             this.$nextTick(() => {
                 this.ensureMapSize();

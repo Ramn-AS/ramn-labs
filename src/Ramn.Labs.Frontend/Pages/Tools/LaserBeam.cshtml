@@ -15,9 +15,8 @@
 }
 
 <div x-data="laserBeamTool()"
-     class="tool-grid"
-     x-bind:class="{ 'map-maximized': mapMaximized }"
-     x-bind:style="mapMaximized ? '--map-maximized-top:' + maximizedTopOffset + 'px;' : ''"
+     class="tool-grid map-maximized"
+     x-bind:style="'--map-maximized-top:' + maximizedTopOffset + 'px;'"
      x-on:keydown.escape.window="closeMapActionMenu()">
     <section class="card shadow-sm controls-panel">
         <div class="card-body">
