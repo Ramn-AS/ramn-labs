@@ -1,0 +1,115 @@
+@page
+@model Ramn.Labs.Frontend.Pages.Tools.QrCodeGeneratorModel
+@{
+    ViewData["Title"] = "QR Code Generator";
+    ViewData["Description"] = "Generate QR codes in your browser as SVG and download them as SVG, PNG, or JPG without backend processing.";
+    ViewData["SocialImagePath"] = "/_content/Ramn.Labs.Frontend/images/tools/qr-code-generator-preview.jpg";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/_content/Ramn.Labs.Frontend/css/tools/qr-code-generator.css" asp-append-version="true" />
+}
+
+<div x-data="qrCodeGeneratorTool()" class="qr-generator-grid">
+    <section class="card shadow-sm qr-controls-panel">
+        <div class="card-body">
+            <h1 class="h4 mb-3">QR Code Generator</h1>
+            <p class="text-body-secondary small">Generate a plain QR code locally in your browser. The content is not sent to the backend. No redirects or tracker links are inserted. These QR codes will last forever and never break.</p>
+
+            <div class="mb-3">
+                <label class="form-label" for="qrContent">Content</label>
+                <textarea id="qrContent"
+                          class="form-control font-monospace"
+                          rows="8"
+                          x-model="content"
+                          x-on:input.debounce.250ms="persistPreferences(); generate()"
+                          placeholder="https://lab.ramn.no/"></textarea>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="qrErrorCorrection">Error correction</label>
+                    <select id="qrErrorCorrection" class="form-select" x-model="errorCorrection" x-on:change="persistPreferences(); generate();">
+                        <option value="L">L - Low</option>
+                        <option value="M">M - Medium</option>
+                        <option value="Q">Q - Quartile</option>
+                        <option value="H">H - High</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="qrRasterSize">Raster size</label>
+                    <div class="input-group">
+                        <input id="qrRasterSize"
+                               type="number"
+                               class="form-control"
+                               min="128"
+                               max="4096"
+                               step="128"
+                               x-model.number="rasterSize"
+                               x-on:change="normalizeRasterSize(); persistPreferences();" />
+                        <span class="input-group-text">px</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="qrForegroundColor">Foreground</label>
+                    <input id="qrForegroundColor" type="color" class="form-control form-control-color" x-model="foregroundColor" x-on:input.debounce.150ms="persistPreferences(); generate();" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="qrBackgroundColor">Background</label>
+                    <input id="qrBackgroundColor" type="color" class="form-control form-control-color" x-model="backgroundColor" x-on:input.debounce.150ms="persistPreferences(); generate();" />
+                </div>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label" for="qrMargin">Quiet zone</label>
+                    <input id="qrMargin"
+                           type="number"
+                           class="form-control"
+                           min="0"
+                           max="16"
+                           step="1"
+                           x-model.number="margin"
+                           x-on:change="normalizeMargin(); persistPreferences(); generate();" />
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary" x-on:click="downloadSvg()" x-bind:disabled="!canDownload">Download SVG</button>
+                <button type="button" class="btn btn-outline-primary" x-on:click="downloadRaster('png')" x-bind:disabled="!canDownload">Download PNG</button>
+                <button type="button" class="btn btn-outline-primary" x-on:click="downloadRaster('jpg')" x-bind:disabled="!canDownload">Download JPG</button>
+            </div>
+
+            <hr />
+
+            <div class="small status-block">
+                <div><strong>Status:</strong> <span x-text="status"></span></div>
+                <div><strong>Characters:</strong> <span x-text="contentLength"></span></div>
+                <div><strong>Modules:</strong> <span x-text="moduleCountText"></span></div>
+                <div><strong>Raster:</strong> <span x-text="rasterSizeText"></span></div>
+                <div class="text-danger mt-2" x-show="error" x-text="error"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm qr-preview-panel">
+        <div class="card-body">
+            <div class="qr-preview-header">
+                <h2 class="h5 mb-0">Preview</h2>
+                <span class="badge text-bg-secondary" x-text="errorCorrectionLabel"></span>
+            </div>
+            <div class="qr-preview-frame" x-bind:class="{ 'is-empty': !canDownload }">
+                <div class="qr-preview-empty" x-show="!canDownload" x-text="previewMessage"></div>
+                <div class="qr-preview-svg" x-show="canDownload" x-html="svgMarkup"></div>
+            </div>
+        </div>
+    </section>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js"></script>
+    <script src="~/_content/Ramn.Labs.Frontend/js/tools/qr-code-generator.js" asp-append-version="true"></script>
+}
